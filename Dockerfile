@@ -20,21 +20,37 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Configurar directorio de trabajo
 WORKDIR /var/www/html
 
-# Copiar archivos del proyecto
-COPY . .
+# Copiar composer files primero
+COPY composer.json composer.lock* ./
 
 # Instalar dependencias de Composer
-RUN composer install --optimize-autoloader --no-dev
+RUN composer install --optimize-autoloader --no-dev --no-scripts --no-interaction
+
+# Copiar el resto de archivos
+COPY . .
+
+# IMPORTANTE: Eliminar archivos de cache de configuración
+RUN rm -rf bootstrap/cache/*.php
+RUN rm -rf storage/framework/cache/data/*
+RUN rm -rf storage/framework/views/*
 
 # Configurar permisos
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
-# Exponer puerto
-EXPOSE 80
+# Exponer puerto 8080 (Railway usa este puerto)
+EXPOSE 8080
 
-# Configurar Apache
+# Configurar Apache para puerto 8080
+RUN sed -i 's/80/8080/g' /etc/apache2/sites-available/000-default.conf /etc/apache2/ports.conf
 RUN a2enmod rewrite
 RUN sed -i 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf
 
+# Script de inicio que limpia cache y ejecuta migraciones
+RUN echo '#!/bin/bash\n\
+php artisan config:clear\n\
+php artisan cache:clear\n\
+php artisan migrate --force\n\
+apache2-foreground' > /start.sh && chmod +x /start.sh
+
 # Comando de inicio
-CMD ["apache2-foreground"]
+CMD ["/start.sh"]
