@@ -93,20 +93,50 @@ class EntryService
             Log::info('📥 Creando entrada con datos:', $data);
 
             // Validar que existan las relaciones requeridas
-            if (!isset($data['location_id'])) {
-                // Si no hay location_id, intentar crear/obtener una ubicación por defecto
+            if (!isset($data['location_id']) || empty($data['location_id'])) {
+                Log::info('📍 location_id no proporcionado, buscando ubicación por defecto...');
+                
+                // Buscar ubicación por defecto para el almacén específico
                 $defaultLocation = DB::table('locations')
                     ->where('warehouse_id', $data['warehouse_id'])
-                    ->where('name', 'LIKE', '%General%')
-                    ->orWhere('name', 'LIKE', '%Principal%')
+                    ->where(function($query) {
+                        $query->where('name', 'LIKE', '%General%')
+                              ->orWhere('name', 'LIKE', '%Principal%')
+                              ->orWhere('name', 'LIKE', '%Default%')
+                              ->orWhere('name', 'LIKE', '%Predeterminada%');
+                    })
                     ->first();
 
+                // Si no encuentra con esos nombres, tomar la primera ubicación del almacén
                 if (!$defaultLocation) {
-                    throw new \Exception('No se encontró una ubicación válida para este almacén. Por favor, cree una ubicación primero.');
+                    Log::info('📍 No se encontró ubicación con nombre especial, buscando primera ubicación del almacén...');
+                    
+                    $defaultLocation = DB::table('locations')
+                        ->where('warehouse_id', $data['warehouse_id'])
+                        ->orderBy('id', 'asc')
+                        ->first();
+                }
+
+                if (!$defaultLocation) {
+                    Log::error('❌ No existe ninguna ubicación para el almacén ID: ' . $data['warehouse_id']);
+                    throw new \Exception('No se encontró ninguna ubicación para el almacén seleccionado. Por favor, cree al menos una ubicación en este almacén antes de registrar entradas.');
                 }
                 
                 $data['location_id'] = $defaultLocation->id;
-                Log::info("📍 Ubicación por defecto asignada: {$defaultLocation->name}");
+                Log::info("✅ Ubicación por defecto asignada: ID {$defaultLocation->id} - {$defaultLocation->name}");
+            } else {
+                // Verificar que la ubicación existe y pertenece al almacén
+                $location = DB::table('locations')
+                    ->where('id', $data['location_id'])
+                    ->where('warehouse_id', $data['warehouse_id'])
+                    ->first();
+
+                if (!$location) {
+                    Log::error("❌ La ubicación ID {$data['location_id']} no existe o no pertenece al almacén ID {$data['warehouse_id']}");
+                    throw new \Exception('La ubicación seleccionada no es válida para este almacén.');
+                }
+
+                Log::info("✅ Ubicación validada: ID {$location->id} - {$location->name}");
             }
 
             // Crear entrada
@@ -147,7 +177,7 @@ class EntryService
                 }
                 $inventory->save();
 
-                Log::info("📦 Inventario actualizado: producto ID {$entry->product_id}, stock {$inventory->stock}");
+                Log::info("📦 Inventario actualizado: producto ID {$entry->product_id}, lote {$entry->lot}, stock {$inventory->stock}");
             } else {
                 // Crear nuevo inventario
                 $inventory = Inventory::create([
@@ -159,7 +189,7 @@ class EntryService
                     'location_id'  => $entry->location_id,
                     'user_id'      => $userId,
                 ]);
-                Log::info("🆕 Nuevo inventario creado para producto ID {$entry->product_id}");
+                Log::info("🆕 Nuevo inventario creado para producto ID {$entry->product_id}, lote {$entry->lot}");
             }
 
             // ⚠️ Gestionar alertas

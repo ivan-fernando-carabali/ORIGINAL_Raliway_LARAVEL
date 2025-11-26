@@ -96,6 +96,14 @@ class EntryController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            // 🔍 Log de datos recibidos para debug
+            Log::info('🔍 === INICIO DE REGISTRO DE ENTRADA ===');
+            Log::info('🔍 Datos recibidos del frontend:', $request->all());
+            Log::info('🔍 Usuario autenticado:', [
+                'user_id' => Auth::id(),
+                'user_name' => Auth::user()?->name
+            ]);
+
             $validated = $request->validate([
                 'product_id'   => 'required|integer|exists:products,id',
                 'quantity'     => 'required|integer|min:1',
@@ -107,8 +115,11 @@ class EntryController extends Controller
                 'min_stock'    => 'required|integer|min:0',
             ]);
 
+            Log::info('✅ Validación pasada correctamente');
+
             $user = Auth::user();
             if (!$user) {
+                Log::error('❌ Usuario no autenticado intentando crear entrada');
                 return response()->json([
                     'status'  => 'error',
                     'message' => 'Usuario no autenticado.',
@@ -118,9 +129,15 @@ class EntryController extends Controller
             // Normalizar el lote
             $validated['lot'] = !empty($validated['lot']) ? strtoupper(trim($validated['lot'])) : 'SIN_LOTE';
 
-            Log::info('📥 Datos validados para crear entrada:', $validated);
+            Log::info('📥 Datos validados y normalizados:', $validated);
 
             $entry = $this->entryService->createEntryWithInventoryAndUser($validated, $user->id);
+
+            Log::info('✅ === ENTRADA REGISTRADA EXITOSAMENTE ===', [
+                'entry_id' => $entry->id,
+                'product_id' => $entry->product_id,
+                'quantity' => $entry->quantity
+            ]);
 
             return response()->json([
                 'status'  => 'success',
@@ -129,7 +146,10 @@ class EntryController extends Controller
             ], 201);
 
         } catch (ValidationException $e) {
-            Log::warning('⚠️ Error de validación en store:', $e->errors());
+            Log::warning('⚠️ Error de validación en store:', [
+                'errors' => $e->errors(),
+                'request_data' => $request->all()
+            ]);
             
             return response()->json([
                 'status'  => 'error',
@@ -138,16 +158,22 @@ class EntryController extends Controller
             ], 422);
             
         } catch (Exception $e) {
-            Log::error('❌ Error al registrar entrada: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'user_id' => Auth::id(),
-                'request_data' => $request->all()
-            ]);
+            Log::error('❌ === ERROR AL REGISTRAR ENTRADA ===');
+            Log::error('❌ Mensaje: ' . $e->getMessage());
+            Log::error('❌ Archivo: ' . $e->getFile() . ' (Línea: ' . $e->getLine() . ')');
+            Log::error('❌ Usuario: ' . Auth::id());
+            Log::error('❌ Datos recibidos:', $request->all());
+            Log::error('❌ Stack trace:', ['trace' => $e->getTraceAsString()]);
 
             return response()->json([
                 'status'  => 'error',
                 'message' => $e->getMessage(),
-                'error'   => config('app.debug') ? $e->getTraceAsString() : null,
+                'error'   => config('app.debug') ? [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => explode("\n", $e->getTraceAsString())
+                ] : null,
             ], 500);
         }
     }
