@@ -30,10 +30,18 @@ class Entry extends Model
     ];
 
     protected array $allowIncluded = ['product', 'supplier', 'location', 'warehouse', 'user'];
-    protected array $allowFilter = ['id', 'product_id', 'supplier_id', 'warehouse_id', 'location_id', 'quantity', 'lot'];
+    protected array $allowFilter = [
+        'id',
+        'product_id',
+        'supplier_id',
+        'warehouse_id',
+        'location_id',
+        'quantity',
+        'lot'
+    ];
     protected array $allowSort = ['id', 'quantity', 'product_id', 'created_at', 'updated_at'];
 
-    // ============ RELACIONES ============
+    // ==================== RELACIONES ====================
 
     public function product(): BelongsTo
     {
@@ -60,7 +68,7 @@ class Entry extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    // ============ SCOPES ============
+    // ===================== SCOPES =====================
 
     public function scopeIncluded(Builder $query): void
     {
@@ -113,8 +121,6 @@ class Entry extends Model
 
         return $query->get();
     }
-
-    // ============ MÉTODOS AUXILIARES ============
 
     public function scopeByProduct(Builder $query, int $productId): void
     {

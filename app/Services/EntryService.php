@@ -26,11 +26,13 @@ class EntryService
     {
         $query = Entry::query();
         
-        // Eager loading optimizado - solo cargar relaciones necesarias
+        // Eager loading optimizado
         $query->with([
             'product:id,name,reference,category_id',
             'product.category:id,name',
             'supplier:id,name',
+            'warehouse:id,name',
+            'location:id,name',
             'user:id,name,lastname'
         ]);
         
@@ -54,6 +56,10 @@ class EntryService
                 'categoria'         => $entry->product->category->name ?? 'Sin categoría',
                 'proveedor'         => $entry->supplier->name ?? 'Desconocido',
                 'supplier'          => $entry->supplier,
+                'almacen'           => $entry->warehouse->name ?? 'Sin almacén',
+                'warehouse'         => $entry->warehouse,
+                'ubicacion'         => $entry->location->name ?? 'Sin ubicación',
+                'location'          => $entry->location,
                 'fecha'             => $entry->created_at?->format('d/m/Y'),
                 'created_at'        => $entry->created_at?->toDateTimeString(),
                 'lote'              => $entry->lot ?? '',
@@ -61,13 +67,14 @@ class EntryService
                 'batch'             => $entry->lot ?? '',
                 'cantidad'          => $entry->quantity . ' ' . ($entry->unit ?? ''),
                 'quantity'          => $entry->quantity,
+                'unit'              => $entry->unit,
+                'stock'             => $entry->stock,
+                'min_stock'         => $entry->min_stock,
                 'user'              => $entry->user ? [
                     'id' => $entry->user->id,
                     'name' => $entry->user->name,
                     'lastname' => $entry->user->lastname ?? '',
                 ] : null,
-                'ubicacion_interna' => $entry->ubicacion_interna,
-                'min_stock'         => $entry->min_stock,
             ];
         });
     }
@@ -78,42 +85,58 @@ class EntryService
     public function createEntryWithInventoryAndUser(array $data, int $userId)
     {
         return DB::transaction(function () use ($data, $userId) {
+            // Preparar datos
             $data['user_id'] = $userId;
             $data['stock'] = $data['quantity'] ?? 0;
+            $data['lot'] = $data['lot'] ?? 'SIN_LOTE';
 
-            Log::info('📥 Datos recibidos en createEntryWithInventoryAndUser:', $data);
+            Log::info('📥 Creando entrada con datos:', $data);
+
+            // Validar que existan las relaciones requeridas
+            if (!isset($data['location_id'])) {
+                // Si no hay location_id, intentar crear/obtener una ubicación por defecto
+                $defaultLocation = DB::table('locations')
+                    ->where('warehouse_id', $data['warehouse_id'])
+                    ->where('name', 'LIKE', '%General%')
+                    ->orWhere('name', 'LIKE', '%Principal%')
+                    ->first();
+
+                if (!$defaultLocation) {
+                    throw new \Exception('No se encontró una ubicación válida para este almacén. Por favor, cree una ubicación primero.');
+                }
+                
+                $data['location_id'] = $defaultLocation->id;
+                Log::info("📍 Ubicación por defecto asignada: {$defaultLocation->name}");
+            }
 
             // Crear entrada
             $entry = Entry::create($data);
             Log::info("✅ Entrada creada con ID {$entry->id}");
 
-            // 🔗 ASOCIAR PROVEEDOR AL PRODUCTO SI NO ESTÁ ASOCIADO
+            // 🔗 Asociar proveedor al producto si no está asociado
             if (!empty($data['supplier_id'])) {
                 $product = Product::find($entry->product_id);
                 if ($product) {
-                    // Verificar si el proveedor ya está asociado
                     $isAssociated = DB::table('product_supplier')
                         ->where('product_id', $product->id)
                         ->where('supplier_id', $data['supplier_id'])
                         ->exists();
                     
                     if (!$isAssociated) {
-                        // Asociar el proveedor al producto
                         $product->suppliers()->attach($data['supplier_id'], [
-                            'unit_cost' => 0, // Valor por defecto, se puede actualizar después
+                            'unit_cost' => 0,
                             'created_at' => now(),
                             'updated_at' => now()
                         ]);
                         Log::info("🔗 Proveedor {$data['supplier_id']} asociado al producto {$product->id}");
-                    } else {
-                        Log::info("ℹ️ Proveedor {$data['supplier_id']} ya estaba asociado al producto {$product->id}");
                     }
                 }
             }
 
-            // Buscar inventario existente (por producto + lote)
+            // 📦 Gestionar inventario
             $inventory = Inventory::where('product_id', $entry->product_id)
                                   ->where('lot', $entry->lot)
+                                  ->where('warehouse_id', $entry->warehouse_id)
                                   ->first();
 
             if ($inventory) {
@@ -128,25 +151,24 @@ class EntryService
             } else {
                 // Crear nuevo inventario
                 $inventory = Inventory::create([
-                    'product_id'        => $entry->product_id,
-                    'lot'               => $entry->lot,
-                    'stock'             => $entry->quantity,
-                    'min_stock'         => $entry->min_stock ?? 0,
-                    'ubicacion_interna' => $entry->ubicacion_interna,
-                    'user_id'           => $userId,
+                    'product_id'   => $entry->product_id,
+                    'lot'          => $entry->lot,
+                    'stock'        => $entry->quantity,
+                    'min_stock'    => $entry->min_stock ?? 0,
+                    'warehouse_id' => $entry->warehouse_id,
+                    'location_id'  => $entry->location_id,
+                    'user_id'      => $userId,
                 ]);
                 Log::info("🆕 Nuevo inventario creado para producto ID {$entry->product_id}");
             }
 
-            // Resolver alertas pendientes relacionadas con este producto
+            // ⚠️ Gestionar alertas
             if ($this->alertService) {
-                // Primero resolver alertas pendientes por ingreso físico
                 $this->alertService->resolvePendingAlertsForProduct($entry->product_id);
-                // Luego verificar si hay nuevas alertas o si se resolvieron automáticamente
                 $this->alertService->checkStock($inventory);
             }
 
-            return $entry->load(['product', 'supplier']);
+            return $entry->load(['product', 'supplier', 'warehouse', 'location']);
         });
     }
 
@@ -155,18 +177,25 @@ class EntryService
      */
     public function getEntryById(int $id)
     {
-        $entry = Entry::with(['product.category', 'supplier'])->findOrFail($id);
+        $entry = Entry::with([
+            'product.category', 
+            'supplier', 
+            'warehouse', 
+            'location'
+        ])->findOrFail($id);
 
         return [
-            'id'                => $entry->id,
-            'producto'          => $entry->product->name ?? 'Producto desconocido',
-            'categoria'         => $entry->product->category->name ?? 'Sin categoría',
-            'proveedor'         => $entry->supplier->name ?? 'Desconocido',
-            'fecha'             => $entry->created_at?->format('d/m/Y'),
-            'lote'              => $entry->lot ?? '',
-            'cantidad'          => $entry->quantity . ' ' . ($entry->unit ?? ''),
-            'ubicacion_interna' => $entry->ubicacion_interna,
-            'min_stock'         => $entry->min_stock,
+            'id'          => $entry->id,
+            'producto'    => $entry->product->name ?? 'Producto desconocido',
+            'categoria'   => $entry->product->category->name ?? 'Sin categoría',
+            'proveedor'   => $entry->supplier->name ?? 'Desconocido',
+            'almacen'     => $entry->warehouse->name ?? 'Sin almacén',
+            'ubicacion'   => $entry->location->name ?? 'Sin ubicación',
+            'fecha'       => $entry->created_at?->format('d/m/Y'),
+            'lote'        => $entry->lot ?? '',
+            'cantidad'    => $entry->quantity . ' ' . ($entry->unit ?? ''),
+            'stock'       => $entry->stock,
+            'min_stock'   => $entry->min_stock,
         ];
     }
 
@@ -183,6 +212,7 @@ class EntryService
             // Actualizar inventario si cambió cantidad o lote
             $inventory = Inventory::where('product_id', $entry->product_id)
                                   ->where('lot', $entry->lot)
+                                  ->where('warehouse_id', $entry->warehouse_id)
                                   ->first();
 
             if ($inventory && isset($data['quantity'])) {
@@ -194,7 +224,7 @@ class EntryService
                 }
             }
 
-            return $entry->load(['product', 'supplier']);
+            return $entry->load(['product', 'supplier', 'warehouse', 'location']);
         });
     }
 
@@ -209,6 +239,7 @@ class EntryService
             // Ajustar inventario
             $inventory = Inventory::where('product_id', $entry->product_id)
                                   ->where('lot', $entry->lot)
+                                  ->where('warehouse_id', $entry->warehouse_id)
                                   ->first();
 
             if ($inventory) {
@@ -229,11 +260,15 @@ class EntryService
     }
 
     /**
-     * 📊 Resumen de entradas (para frontend)
+     * 📊 Resumen de entradas
      */
     public function getSummary(): array
     {
-        $entries = Entry::select(DB::raw('COUNT(id) as total_entries'), DB::raw('SUM(quantity) as total_quantity'))->first();
+        $entries = Entry::select(
+            DB::raw('COUNT(id) as total_entries'), 
+            DB::raw('SUM(quantity) as total_quantity')
+        )->first();
+        
         $last = Entry::latest('created_at')->first();
 
         return [
