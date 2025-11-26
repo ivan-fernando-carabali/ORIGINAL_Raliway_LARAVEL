@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Exception;
 
 class EntryController extends Controller
@@ -44,7 +45,6 @@ class EntryController extends Controller
     public function lotsSummary(): JsonResponse
     {
         try {
-            // Query optimizado: agrupar directamente en la base de datos
             $lotsSummary = DB::table('entries')
                 ->select(
                     'product_id',
@@ -69,7 +69,7 @@ class EntryController extends Controller
                 'message' => 'Resumen de lotes obtenido correctamente.',
                 'data' => $lotsSummary
             ], 200);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Error al obtener resumen de lotes.',
@@ -84,14 +84,29 @@ class EntryController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            // ✅ VALIDACIÓN COMPLETA CON TODOS LOS CAMPOS
             $validated = $request->validate([
                 'product_id'        => 'required|exists:products,id',
-                'quantity'          => 'required|numeric|min:1',
+                'quantity'          => 'required|numeric|min:0.01',
                 'unit'              => 'nullable|string|max:20',
                 'lot'               => 'nullable|string|max:50',
+                'expiration_date'   => 'nullable|date|after_or_equal:today', // ✅ AGREGADO
                 'supplier_id'       => 'required|exists:suppliers,id',
+                'warehouse_id'      => 'required|exists:warehouses,id', // ✅ AGREGADO
                 'ubicacion_interna' => 'required|string|max:255',
                 'min_stock'         => 'required|numeric|min:0',
+            ], [
+                'product_id.required' => 'El producto es obligatorio.',
+                'product_id.exists' => 'El producto seleccionado no existe.',
+                'quantity.required' => 'La cantidad es obligatoria.',
+                'quantity.min' => 'La cantidad debe ser mayor a 0.',
+                'supplier_id.required' => 'El proveedor es obligatorio.',
+                'supplier_id.exists' => 'El proveedor seleccionado no existe.',
+                'warehouse_id.required' => 'El almacén es obligatorio.',
+                'warehouse_id.exists' => 'El almacén seleccionado no existe.',
+                'ubicacion_interna.required' => 'La ubicación interna es obligatoria.',
+                'min_stock.required' => 'El stock mínimo es obligatorio.',
+                'expiration_date.after_or_equal' => 'La fecha de vencimiento no puede ser anterior a hoy.',
             ]);
 
             $user = Auth::user();
@@ -102,6 +117,21 @@ class EntryController extends Controller
                 ], 401);
             }
 
+            // ✅ NORMALIZAR LOTE
+            if (empty($validated['lot']) || trim($validated['lot']) === '') {
+                $validated['lot'] = 'SIN_LOTE';
+            } else {
+                $validated['lot'] = strtoupper(trim($validated['lot']));
+            }
+
+            // ✅ PROCESAR FECHA DE VENCIMIENTO
+            if (!empty($validated['expiration_date'])) {
+                // Asegurar formato correcto
+                $validated['expiration_date'] = date('Y-m-d', strtotime($validated['expiration_date']));
+            }
+
+            Log::info('📥 Datos validados para entrada:', $validated);
+
             $entry = $this->entryService->createEntryWithInventoryAndUser($validated, $user->id);
 
             return response()->json([
@@ -110,22 +140,25 @@ class EntryController extends Controller
                 'data'    => $entry,
             ], 201);
 
+        } catch (ValidationException $e) {
+            Log::warning('⚠️ Validación fallida:', $e->errors());
+            
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Error de validación.',
+                'errors'  => $e->errors(),
+            ], 422);
+
         } catch (Exception $e) {
             Log::error('❌ Error al registrar entrada: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
+                'data' => $request->all()
             ]);
-
-            if (config('app.debug')) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Error al registrar la entrada.',
-                    'error'   => $e->getMessage(),
-                ], 500);
-            }
 
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Error al registrar la entrada.',
+                'error'   => config('app.debug') ? $e->getMessage() : 'Error interno del servidor.',
             ], 500);
         }
     }
@@ -150,9 +183,10 @@ class EntryController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'quantity'          => 'sometimes|numeric|min:1',
+            'quantity'          => 'sometimes|numeric|min:0.01',
             'unit'              => 'sometimes|string|max:20',
             'lot'               => 'sometimes|string|max:50',
+            'expiration_date'   => 'sometimes|nullable|date',
             'ubicacion_interna' => 'sometimes|string|max:255',
             'min_stock'         => 'sometimes|numeric|min:0',
         ]);
@@ -194,7 +228,7 @@ class EntryController extends Controller
     }
 
     /**
-     * 📦 Datos para selects de formulario (productos, proveedores)
+     * 📦 Datos para selects de formulario
      */
     public function formData(): JsonResponse
     {

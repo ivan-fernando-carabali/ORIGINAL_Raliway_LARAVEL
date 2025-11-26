@@ -13,9 +13,10 @@ class Entry extends Model
         'quantity',
         'unit',
         'lot',
+        'expiration_date',      // ✅ AGREGADO
         'supplier_id',
         'warehouse_id',
-        'location_id',
+        'ubicacion_interna',    // ✅ CAMBIADO DE location_id
         'min_stock',
         'stock',
         'user_id',
@@ -25,12 +26,13 @@ class Entry extends Model
         'quantity' => 'decimal:2',
         'min_stock' => 'decimal:2',
         'stock' => 'decimal:2',
+        'expiration_date' => 'date',  // ✅ AGREGADO
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
-    protected array $allowIncluded = ['product', 'supplier', 'location', 'warehouse', 'user'];
-    protected array $allowFilter = ['id', 'product_id', 'supplier_id', 'warehouse_id', 'location_id', 'quantity', 'lot'];
+    protected array $allowIncluded = ['product', 'supplier', 'warehouse', 'user'];
+    protected array $allowFilter = ['id', 'product_id', 'supplier_id', 'warehouse_id', 'quantity', 'lot'];
     protected array $allowSort = ['id', 'quantity', 'product_id', 'created_at', 'updated_at'];
 
     // ============ RELACIONES ============
@@ -48,11 +50,6 @@ class Entry extends Model
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
-    }
-
-    public function location(): BelongsTo
-    {
-        return $this->belongsTo(Location::class, 'location_id');
     }
 
     public function user(): BelongsTo
