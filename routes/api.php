@@ -28,12 +28,17 @@ use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotificacionesController;
 
+// =========================
+// 📦 Controladores de Unidades (TU LÍNEA)
+// =========================
+use App\Http\Controllers\Api\UnitsController;
+
 /*
 |--------------------------------------------------------------------------
 | API Routes - Sistema de Inventario Unificado
 |--------------------------------------------------------------------------
 | Estructura consolidada, limpia y coherente.
-| Agrupa rutas públicas, autenticadas y administrativas.
+| Rutas públicas, autenticadas y administrativas.
 |--------------------------------------------------------------------------
 */
 
@@ -66,6 +71,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📊 Dashboard
     // ======================
     Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+
+    // ======================
+    // 📦 TUS RUTAS DE UNIDADES (AÑADIDAS CORRECTAMENTE)
+    // ======================
+    Route::prefix('units')->group(function () {
+        Route::get('/', [UnitsController::class, 'index']);
+        Route::post('/', [UnitsController::class, 'store']);
+        Route::post('/initialize', [UnitsController::class, 'initialize']);
+    });
 
     // ======================
     // 🚨 ALERTAS
