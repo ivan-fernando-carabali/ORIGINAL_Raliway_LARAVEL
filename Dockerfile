@@ -88,3 +88,4 @@ EXPOSE 8080
 # Comando de inicio
 # -----------------------------
 CMD ["/start.sh"]
+
