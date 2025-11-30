@@ -4,130 +4,157 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Entry extends Model
 {
+    /*
+    |--------------------------------------------------------------------------
+    | 🔒 Campos rellenables (mass assignment)
+    |--------------------------------------------------------------------------
+    |
+    | Incluimos user_id porque el valor se asigna desde el backend
+    | (Auth::user()->id) antes de crear el registro con create().
+    |
+    */
     protected $fillable = [
         'product_id',
-        'quantity',
-        'unit',
-        'lot',
+        'quantity',           // Cantidad ingresada
+        'unit',               // Unidad de medida
+        'lot',                // Lote
         'supplier_id',
-        'warehouse_id',
-        'location_id',
-        'min_stock',
-        'stock',
-        'user_id',
+        'ubicacion_interna',  // Ubicación interna
+        'min_stock',          // Stock mínimo
+        'stock',              // Stock actual
+        'user_id',            // Usuario autenticado que crea la entrada
     ];
 
-    protected $casts = [
-        'quantity' => 'decimal:2',
-        'min_stock' => 'decimal:2',
-        'stock' => 'decimal:2',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
+    /*
+    |--------------------------------------------------------------------------
+    | ⚙️ Filtros y relaciones permitidas
+    |--------------------------------------------------------------------------
+    */
+    protected array $allowIncluded = ['product', 'supplier'];
+    protected array $allowFilter   = ['id', 'product_id', 'supplier_id', 'quantity'];
+    protected array $allowSort     = ['id', 'quantity', 'product_id', 'created_at'];
 
-    protected array $allowIncluded = ['product', 'supplier', 'location', 'warehouse', 'user'];
-    protected array $allowFilter = ['id', 'product_id', 'supplier_id', 'warehouse_id', 'location_id', 'quantity', 'lot'];
-    protected array $allowSort = ['id', 'quantity', 'product_id', 'created_at', 'updated_at'];
+    /*
+    |--------------------------------------------------------------------------
+    | 🔗 Relaciones
+    |--------------------------------------------------------------------------
+    */
 
-    // ============ RELACIONES ============
-
-    public function product(): BelongsTo
+    /**
+     * 🔗 Relación con el producto
+     */
+    public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
     }
 
-    public function supplier(): BelongsTo
+    /**
+     * 🔗 Relación con el proveedor
+     */
+    public function supplier()
     {
         return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
-    public function warehouse(): BelongsTo
-    {
-        return $this->belongsTo(Warehouse::class, 'warehouse_id');
-    }
-
-    public function location(): BelongsTo
-    {
-        return $this->belongsTo(Location::class, 'location_id');
-    }
-
-    public function user(): BelongsTo
+    /**
+     * 🔗 Relación con el usuario que registró la entrada
+     */
+    public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    // ============ SCOPES ============
+    /*
+    |--------------------------------------------------------------------------
+    | 🔍 Scopes personalizados
+    |--------------------------------------------------------------------------
+    */
 
+    /**
+     * Incluye relaciones permitidas mediante ?included=
+     *
+     * Ejemplo: /entries?included=product,supplier
+     */
     public function scopeIncluded(Builder $query): void
     {
         $included = request('included');
-        if (!$included) return;
+        if (empty($included)) return;
 
-        $relations = array_filter(
-            explode(',', $included),
-            fn($r) => in_array(trim($r), $this->allowIncluded)
-        );
+        $relations = explode(',', $included);
+        $allowIncluded = collect($this->allowIncluded);
 
-        if (!empty($relations)) {
-            $query->with($relations);
-        }
+        $relations = array_filter($relations, fn($relation) => $allowIncluded->contains($relation));
+        $query->with($relations);
     }
 
+    /**
+     * Filtra resultados mediante ?filter[campo]=valor
+     *
+     * Ejemplo: /entries?filter[product_id]=1
+     */
     public function scopeFilter(Builder $query): void
     {
-        $filters = request('filter', []);
+        $filters = request('filter');
+        if (empty($filters)) return;
 
-        foreach ($filters as $key => $value) {
-            if (in_array($key, $this->allowFilter) && $value !== null && $value !== '') {
-                $query->where($key, $value);
+        $allowFilter = collect($this->allowFilter);
+
+        foreach ($filters as $filter => $value) {
+            if ($allowFilter->contains($filter)) {
+                if (is_numeric($value)) {
+                    $query->where($filter, $value);
+                } elseif (strtotime($value)) {
+                    $query->whereDate($filter, $value);
+                } else {
+                    $query->where($filter, 'LIKE', '%' . $value . '%');
+                }
             }
         }
     }
 
+    /**
+     * Ordena resultados mediante ?sort=campo o ?sort=-campo
+     *
+     * Ejemplo: /entries?sort=-quantity
+     */
     public function scopeSort(Builder $query): void
     {
         $sort = request('sort');
-        if (!$sort) return;
+        if (empty($sort)) return;
 
-        foreach (explode(',', $sort) as $field) {
-            $direction = str_starts_with($field, '-') ? 'desc' : 'asc';
-            $field = ltrim($field, '-');
+        $sortFields = explode(',', $sort);
+        $allowSort  = collect($this->allowSort);
 
-            if (in_array($field, $this->allowSort)) {
-                $query->orderBy($field, $direction);
+        foreach ($sortFields as $sortField) {
+            $direction = 'asc';
+
+            if (str_starts_with($sortField, '-')) {
+                $direction = 'desc';
+                $sortField = substr($sortField, 1);
+            }
+
+            if ($allowSort->contains($sortField)) {
+                $query->orderBy($sortField, $direction);
             }
         }
     }
 
+    /**
+     * Devuelve paginación si existe ?perPage, de lo contrario todos los registros
+     *
+     * Ejemplo: /entries?perPage=10
+     */
     public function scopeGetOrPaginate(Builder $query)
     {
         $perPage = request('perPage');
 
-        if ($perPage && is_numeric($perPage) && $perPage > 0) {
+        if ($perPage && intval($perPage) > 0) {
             return $query->paginate(intval($perPage));
         }
 
         return $query->get();
-    }
-
-    // ============ MÉTODOS AUXILIARES ============
-
-    public function scopeByProduct(Builder $query, int $productId): void
-    {
-        $query->where('product_id', $productId);
-    }
-
-    public function scopeByLot(Builder $query, string $lot): void
-    {
-        $query->where('lot', $lot);
-    }
-
-    public function scopeRecent(Builder $query, int $days = 30): void
-    {
-        $query->where('created_at', '>=', now()->subDays($days));
     }
 }

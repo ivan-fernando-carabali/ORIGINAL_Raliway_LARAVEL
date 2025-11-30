@@ -55,7 +55,8 @@ RUN rm -rf bootstrap/cache/*.php \
 # Configurar permisos
 # -----------------------------
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
-
+# Exponer puerto 8080 (Railway usa este puerto)
+EXPOSE 8080
 # -----------------------------
 # Configurar Apache para Railway
 # -----------------------------
@@ -80,9 +81,7 @@ apache2-foreground' > /start.sh \
     && chmod +x /start.sh
 
 # -----------------------------
-# Exponer puerto 8080
-# -----------------------------
-EXPOSE 8080
+
 
 # -----------------------------
 # Comando de inicio

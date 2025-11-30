@@ -26,6 +26,16 @@ class Inventory extends Model
     ];
 
     // ==================================================
+    // 🔄 ATRIBUTOS ADICIONALES (ACCESSORS)
+    // ==================================================
+    protected $appends = ['stock_actual'];
+
+    public function getStockActualAttribute()
+    {
+        return $this->stock;
+    }
+
+    // ==================================================
     // ⚙️ CONFIGURACIÓN DE LISTAS BLANCAS PARA FILTROS
     // ==================================================
     protected array $allowIncluded = ['product', 'user', 'warehouse', 'alerts'];
@@ -122,6 +132,11 @@ class Inventory extends Model
         return $this->stock < $this->min_stock;
     }
 
+    public function isOutOfStock(): bool
+    {
+        return $this->stock <= 0;
+    }
+
     // Alias para compatibilidad (usa 'stock' internamente)
     public function getQuantityAttribute()
     {
@@ -135,7 +150,7 @@ class Inventory extends Model
     {
         // 🔐 Asigna automáticamente el usuario logueado
         static::creating(function ($inventory) {
-            if (Auth::check()) {
+            if (Auth::check() && !$inventory->user_id) {
                 $inventory->user_id = Auth::id();
             }
         });

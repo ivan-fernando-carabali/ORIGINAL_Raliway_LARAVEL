@@ -4,68 +4,85 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Order extends Model
 {
+    use HasFactory;
+
+    // ==================================================
+    // 🧱 CAMPOS ASIGNABLES
+    // ==================================================
     protected $fillable = [
-        'date', 
-        'state', 
-        'user_id', 
-        'supplier_id',
+        'user_id',
         'product_id',
-        'inventory_id',
+        'supplier_id',
         'alert_id',
-        'quantity',
+        'inventory_id',
         'dep_buy_id',
-        'supplier_email' // Agregado para almacenar el email del proveedor
+        'quantity',
+        'supplier_email',
+        'date',
+        'state'
     ];
 
-    // Relaciones permitidas en includes
-    protected $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert'];
-    protected $allowFilter   = ['id', 'state', 'status'];
-    protected $allowSort     = ['id', 'state', 'date'];
+    // ==================================================
+    // 🔄 CASTS
+    // ==================================================
+    protected $casts = [
+        'date' => 'date',
+        'quantity' => 'decimal:2',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
 
-    // Relación con proveedor
-    public function supplier()
-    {
-        return $this->belongsTo(Supplier::class, 'supplier_id');
-    }
+    // ==================================================
+    // ⚙️ CONFIGURACIÓN DE LISTAS BLANCAS PARA FILTROS
+    // ==================================================
+    protected array $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert', 'depBuy'];
+    protected array $allowFilter   = ['id', 'state', 'supplier_id', 'product_id', 'user_id'];
+    protected array $allowSort     = ['id', 'state', 'date', 'created_at'];
 
-    // Relación con usuario
+    // ==================================================
+    // 🔗 RELACIONES
+    // ==================================================
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::class);
     }
 
-    // Relación con producto
     public function product()
     {
-        return $this->belongsTo(Product::class, 'product_id');
+        return $this->belongsTo(Product::class);
     }
 
-    // Relación con inventario
-    public function inventory()
+    public function supplier()
     {
-        return $this->belongsTo(Inventory::class, 'inventory_id');
+        return $this->belongsTo(Supplier::class);
     }
 
-    // Relación con alerta
     public function alert()
     {
-        return $this->belongsTo(Alert::class, 'alert_id');
+        return $this->belongsTo(Alert::class);
     }
 
-    // Relación uno a muchos con productos (legacy)
-    public function products()
+    public function inventory()
     {
-        return $this->hasMany(Product::class, 'order_id');
+        return $this->belongsTo(Inventory::class);
     }
 
-    /* ----------------- SCOPES DINÁMICOS ----------------- */
+    public function depBuy()
+    {
+        return $this->belongsTo(DepBuy::class);
+    }
+
+    // ==================================================
+    // 🔎 SCOPES (INCLUSIÓN, FILTRO, ORDEN, PAGINACIÓN)
+    // ==================================================
     public function scopeIncluded(Builder $query)
     {
         if (empty($this->allowIncluded) || empty(request('included'))) {
-            return;
+            return $query;
         }
 
         $relations = explode(',', request('included'));
@@ -77,20 +94,23 @@ class Order extends Model
             }
         }
 
-        $query->with($relations);
+        if (!empty($relations)) {
+            $query->with($relations);
+        }
+
+        return $query;
     }
 
     public function scopeFilter(Builder $query)
     {
-        if (empty($this->allowFilter) || empty(request('filter'))) {
-            return;
+        if (empty($this->allowFilter)) {
+            return $query;
         }
 
-        $filters = request('filter');
-        $allowFilter = collect($this->allowFilter);
+        $filters = request('filter', []) + request()->only($this->allowFilter);
 
         foreach ($filters as $filter => $value) {
-            if ($allowFilter->contains($filter)) {
+            if (in_array($filter, $this->allowFilter)) {
                 if (is_numeric($value)) {
                     $query->where($filter, $value);
                 } elseif (strtotime($value)) {
@@ -100,38 +120,71 @@ class Order extends Model
                 }
             }
         }
+
+        return $query;
     }
 
     public function scopeSort(Builder $query)
     {
-        if (empty($this->allowSort) || empty(request('sort'))) {
-            return;
-        }
-
-        $sortFields = explode(',', request('sort'));
+        $sortFields = explode(',', request('sort', ''));
         $allowSort = collect($this->allowSort);
 
         foreach ($sortFields as $sortField) {
             $direction = 'asc';
-            if (substr($sortField, 0, 1) == '-') {
+            if (substr($sortField, 0, 1) === '-') {
                 $direction = 'desc';
                 $sortField = substr($sortField, 1);
             }
+
             if ($allowSort->contains($sortField)) {
                 $query->orderBy($sortField, $direction);
             }
         }
+
+        return $query;
     }
 
     public function scopeGetOrPaginate(Builder $query)
     {
-        if (request('perPage')) {
-            $perPage = intval(request('perPage'));
-            if ($perPage) {
-                return $query->paginate($perPage);
-            }
-        }
+        $perPage = intval(request('perPage', 0));
+        return $perPage > 0 ? $query->paginate($perPage) : $query->get();
+    }
 
-        return $query->get();
+    // ==================================================
+    // 🧠 MÉTODOS AUXILIARES DE ESTADO
+    // ==================================================
+    public function isPending(): bool
+    {
+        return $this->state === 'pending';
+    }
+
+    public function isSent(): bool
+    {
+        return $this->state === 'sent';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->state === 'completed';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->state === 'cancelled';
+    }
+
+    public function markAsSent(): void
+    {
+        $this->update(['state' => 'sent']);
+    }
+
+    public function markAsCompleted(): void
+    {
+        $this->update(['state' => 'completed']);
+    }
+
+    public function cancel(): void
+    {
+        $this->update(['state' => 'cancelled']);
     }
 }

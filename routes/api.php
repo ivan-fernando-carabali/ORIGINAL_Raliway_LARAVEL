@@ -26,6 +26,7 @@ use App\Http\Controllers\ExitDetailController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\UnitController;
 
 /*
 |--------------------------------------------------------------------------
@@ -65,7 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📊 Dashboard
     // ======================
     Route::get('dashboard/summary', [DashboardController::class, 'summary']);
-
+    Route::apiResource('units', UnitController::class);
     // ======================
     // 🚨 ALERTAS
     // ======================
@@ -97,15 +98,18 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ======================
-    // 🧾 Categorías
-    // ======================
-    Route::prefix('categories')->group(function () {
-        Route::get('/', [CategoryController::class, 'index']);
-        Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
-        Route::post('init', [CategoryController::class, 'init']);
-        Route::post('sync', [CategoryController::class, 'sync']);
-        Route::get('{id}', [CategoryController::class, 'show']);
-    });
+   // 🧾 Categorías
+// ======================
+Route::prefix('categories')->group(function () {
+    Route::get('/', [CategoryController::class, 'index']);
+    Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
+    Route::post('initialize', [CategoryController::class, 'initialize']); // 🔥 NUEVA RUTA
+    Route::post('init', [CategoryController::class, 'init']);
+    Route::post('sync', [CategoryController::class, 'sync']);
+    Route::get('{id}', [CategoryController::class, 'show']);
+    Route::put('{id}', [CategoryController::class, 'update']); // Actualizar categoría
+    Route::delete('{id}', [CategoryController::class, 'destroy']); // Eliminar categoría
+});
 
     // ======================
     // 📦 Productos
@@ -185,4 +189,8 @@ Route::apiResource('suppliers', SupplierController::class);
         Route::post('users/{id}/change-password', [UserController::class, 'changePassword']);
         Route::apiResource('roles', RoleController::class);
     });
+
+
+
+
 });
