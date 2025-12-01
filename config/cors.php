@@ -12,17 +12,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    // Se obtiene del FRONTEND_URL del .env y se convierte en array
-    'allowed_origins' => array_filter(array_map('trim', explode(',', env('FRONTEND_URL', '
-        http://localhost,
-        http://localhost:8100,
-        http://127.0.0.1,
-        https://localhost,
-        capacitor://localhost,
-        ionic://localhost
-    ')))),
+    // URLs permitidas desde FRONTEND_URL en .env
+    'allowed_origins' => array_filter(array_map('trim', explode(',', env('FRONTEND_URL')))),
 
-    // Patrones adicionales para permitir localhost, Android e Ionic
+    // Patrones adicionales
     'allowed_origins_patterns' => [
         '#^https?://localhost(:\d+)?$#',
         '#^https?://127\.0\.0\.1(:\d+)?$#',
@@ -30,13 +23,9 @@ return [
         '#^ionic://localhost$#',
     ],
 
-    'allowed_headers' => [
-        '*'
-    ],
+    'allowed_headers' => ['*'],
 
-    'exposed_headers' => [
-        'Authorization'
-    ],
+    'exposed_headers' => ['Authorization'],
 
     'max_age' => 0,
 
