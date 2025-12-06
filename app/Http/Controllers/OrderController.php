@@ -49,8 +49,10 @@ class OrderController extends Controller
                 'supplier_id' => 'nullable|integer|exists:suppliers,id',
                 'quantity' => 'required|integer|min:1',
                 'alert_id' => 'nullable|integer|exists:alerts,id',
-                'user_id' => 'required|integer|exists:users,id', // Agregado
-                'supplier_email' => 'nullable|email', // Agregado
+                'user_id' => 'required|integer|exists:users,id',
+                'supplier_email' => 'nullable|email',
+                'date' => 'nullable|date', // Aceptar date del request o usar fecha actual
+                'status' => 'nullable|string|in:pendiente,enviado,recibido,cancelado',
             ]);
 
             // Preparar datos para crear la orden
@@ -62,8 +64,8 @@ class OrderController extends Controller
                 'alert_id' => $validated['alert_id'] ?? null,
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
-                'date' => now()->format('Y-m-d'), // Campo requerido por la base de datos (formato YYYY-MM-DD)
-                'status' => 'pendiente',
+                'date' => $validated['date'] ?? now()->format('Y-m-d'), // Usar date del request o fecha actual
+                'status' => $validated['status'] ?? 'pendiente',
             ];
             
             Log::info('📦 Creando orden con datos:', $orderData);
