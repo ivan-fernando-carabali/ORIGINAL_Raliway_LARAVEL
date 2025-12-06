@@ -53,8 +53,8 @@ class OrderController extends Controller
                 'supplier_email' => 'nullable|email', // Agregado
             ]);
 
-            // Crear la orden
-            $order = Order::create([
+            // Preparar datos para crear la orden
+            $orderData = [
                 'product_id' => $validated['product_id'],
                 'inventory_id' => $validated['inventory_id'] ?? null,
                 'supplier_id' => $validated['supplier_id'] ?? null,
@@ -62,9 +62,14 @@ class OrderController extends Controller
                 'alert_id' => $validated['alert_id'] ?? null,
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
-                'date' => now()->toDateString(), // Campo requerido por la base de datos
+                'date' => \Carbon\Carbon::now()->toDateString(), // Campo requerido por la base de datos
                 'status' => 'pendiente',
-            ]);
+            ];
+            
+            Log::info('📦 Creando orden con datos:', $orderData);
+            
+            // Crear la orden
+            $order = Order::create($orderData);
 
             // Cargar relaciones
             $order->load(['product', 'supplier', 'alert', 'inventory', 'user']);
