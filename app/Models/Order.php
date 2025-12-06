@@ -17,9 +17,16 @@ class Order extends Model
         'quantity',
         'dep_buy_id',
         'supplier_email', // Agregado para almacenar el email del proveedor
+        'date', // Campo requerido por la base de datos
         'notes',
         'sent_at',
         'received_at'
+    ];
+
+    protected $casts = [
+        'date' => 'date',
+        'sent_at' => 'datetime',
+        'received_at' => 'datetime',
     ];
 
     // Relaciones permitidas en includes
