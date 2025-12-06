@@ -64,6 +64,7 @@ class OrderController extends Controller
                 'alert_id' => $validated['alert_id'] ?? null,
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
+                'dep_buy_id' => null, // Campo nullable según migración
                 'date' => $validated['date'] ?? now()->format('Y-m-d'), // Usar date del request o fecha actual
                 'status' => $validated['status'] ?? 'pendiente',
             ];
