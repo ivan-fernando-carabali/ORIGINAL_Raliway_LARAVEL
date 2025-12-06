@@ -56,6 +56,19 @@ class OrderController extends Controller
             ]);
 
             // Preparar datos para crear la orden
+            // Asegurar que date siempre tenga un valor válido
+            $dateValue = null;
+            if (!empty($validated['date'])) {
+                $dateValue = $validated['date'];
+            } else {
+                $dateValue = now()->format('Y-m-d');
+            }
+            
+            // Validar formato de fecha
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
+                $dateValue = now()->format('Y-m-d');
+            }
+            
             $orderData = [
                 'product_id' => $validated['product_id'],
                 'inventory_id' => $validated['inventory_id'] ?? null,
@@ -65,11 +78,12 @@ class OrderController extends Controller
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
                 'dep_buy_id' => null, // Campo nullable según migración
-                'date' => $validated['date'] ?? now()->format('Y-m-d'), // Usar date del request o fecha actual
+                'date' => $dateValue, // Campo requerido - siempre debe tener valor
                 'status' => $validated['status'] ?? 'pendiente',
             ];
             
             Log::info('📦 Creando orden con datos:', $orderData);
+            Log::info('📅 Valor de date: ' . $dateValue);
             
             // Crear la orden
             try {
@@ -78,6 +92,7 @@ class OrderController extends Controller
             } catch (\Exception $e) {
                 Log::error('❌ Error al crear orden: ' . $e->getMessage());
                 Log::error('📋 Datos que se intentaron guardar: ' . json_encode($orderData));
+                Log::error('📋 Stack trace: ' . $e->getTraceAsString());
                 throw $e;
             }
 
