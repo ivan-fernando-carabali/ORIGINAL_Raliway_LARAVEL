@@ -62,14 +62,21 @@ class OrderController extends Controller
                 'alert_id' => $validated['alert_id'] ?? null,
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
-                'date' => \Carbon\Carbon::now()->toDateString(), // Campo requerido por la base de datos
+                'date' => now()->format('Y-m-d'), // Campo requerido por la base de datos (formato YYYY-MM-DD)
                 'status' => 'pendiente',
             ];
             
             Log::info('📦 Creando orden con datos:', $orderData);
             
             // Crear la orden
-            $order = Order::create($orderData);
+            try {
+                $order = Order::create($orderData);
+                Log::info('✅ Orden creada exitosamente con ID: ' . $order->id);
+            } catch (\Exception $e) {
+                Log::error('❌ Error al crear orden: ' . $e->getMessage());
+                Log::error('📋 Datos que se intentaron guardar: ' . json_encode($orderData));
+                throw $e;
+            }
 
             // Cargar relaciones
             $order->load(['product', 'supplier', 'alert', 'inventory', 'user']);
