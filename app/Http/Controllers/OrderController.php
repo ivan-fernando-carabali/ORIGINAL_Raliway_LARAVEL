@@ -79,35 +79,30 @@ class OrderController extends Controller
                 }
             }
 
-            // Enviar email al proveedor si existe email
+            // Determinar email del proveedor (priorizar email del request, luego el del proveedor)
             $supplierEmail = null;
-
-            // Priorizar el email del request, luego el del proveedor
             if ($order->supplier_email) {
                 $supplierEmail = $order->supplier_email;
             } elseif ($order->supplier && $order->supplier->email) {
                 $supplierEmail = $order->supplier->email;
             }
 
-
             // Enviar email al proveedor si existe email
             if ($supplierEmail) {
                 try {
                     Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
-                    Log::info('Email enviado a: ' . $supplierEmail);
-
+                    Log::info('✅ Email enviado a: ' . $supplierEmail);
+                    
+                    // Actualizar estado a 'enviado' si se envió email correctamente
+                    $order->status = 'enviado';
+                    $order->sent_at = now();
+                    $order->save();
                 } catch (\Exception $e) {
-                    Log::error('Error enviando email de orden: ' . $e->getMessage());
-                    // No fallar la orden si el email falla
+                    Log::error('❌ Error enviando email de orden: ' . $e->getMessage());
+                    // No fallar la orden si el email falla, pero mantener estado 'pendiente'
                 }
-            }
-
-
-            // Actualizar estado a 'enviado' si se envió email
-            if ($supplierEmail) {
-                $order->status = 'enviado';
-                $order->sent_at = now();
-                $order->save();
+            } else {
+                Log::info('⚠️ No se envió email: no hay email de proveedor disponible');
             }
 
 
