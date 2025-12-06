@@ -60,9 +60,10 @@ class OrderController extends Controller
                 'supplier_id' => $validated['supplier_id'] ?? null,
                 'quantity' => $validated['quantity'],
                 'alert_id' => $validated['alert_id'] ?? null,
-                'user_id' => $validated['user_id'], // IMPORTANTE: Agregado
-                'supplier_email' => $validated['supplier_email'] ?? null, // Agregado
-                'status' => 'pendiente', // Usar 'status' en lugar de 'state', y 'pendiente' en lugar de 'pending'
+                'user_id' => $validated['user_id'],
+                'supplier_email' => $validated['supplier_email'] ?? null,
+                'date' => now()->toDateString(), // Campo requerido por la base de datos
+                'status' => 'pendiente',
             ]);
 
             // Cargar relaciones
