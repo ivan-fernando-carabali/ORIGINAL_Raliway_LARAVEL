@@ -58,7 +58,7 @@ class AlertService
     private function processAlert($product, Inventory $inventory, int $currentStock, ?string $alertType): void
     {
         $activeAlert = Alert::where('product_id', $product->id)
-            ->where('status', Alert::STATUS_ACTIVE)
+            ->where('status', Alert::STATUS_NEW)
             ->first();
 
         // Verificar si hay una alerta recién resuelta por ingreso físico (en los últimos 5 minutos)
@@ -85,7 +85,7 @@ class AlertService
             $alert = Alert::updateOrCreate(
                 [
                     'product_id' => $product->id,
-                    'status' => Alert::STATUS_ACTIVE
+                    'status' => Alert::STATUS_NEW
                 ],
                 [
                     'inventory_id' => $inventory->id,
@@ -142,9 +142,9 @@ class AlertService
      */
     public function resolvePendingAlertsForProduct(int $productId): void
     {
-        // Buscar alertas con estado "pendiente" y "orden_enviada"
+        // Buscar alertas con estado "activa", "pendiente" y "orden_enviada"
         $pendingAlerts = Alert::where('product_id', $productId)
-            ->whereIn('status', [Alert::STATUS_ACTIVE, Alert::STATUS_ORDER_SENT])
+            ->whereIn('status', [Alert::STATUS_NEW, Alert::STATUS_ACTIVE, Alert::STATUS_ORDER_SENT])
             ->get();
 
         Log::info("🔍 [EntryService] Buscando alertas para producto {$productId}. Encontradas: " . $pendingAlerts->count());

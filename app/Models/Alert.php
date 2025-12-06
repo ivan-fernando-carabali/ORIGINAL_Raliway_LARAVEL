@@ -27,7 +27,8 @@ class Alert extends Model
     // Constantes
     const TYPE_LOW_STOCK = 'bajo_stock';
     const TYPE_OUT_OF_STOCK = 'sin_stock';
-    const STATUS_ACTIVE = 'pendiente';
+    const STATUS_NEW = 'activa';
+    const STATUS_ACTIVE = 'pendiente'; // Orden enviada
     const STATUS_RESOLVED = 'resuelta';
     const STATUS_ORDER_SENT = 'orden_enviada';
 
@@ -61,7 +62,12 @@ class Alert extends Model
 
     public function scopeActive($query)
     {
-        return $query->where('status', self::STATUS_ACTIVE);
+        return $query->whereIn('status', [self::STATUS_NEW, self::STATUS_ACTIVE]);
+    }
+    
+    public function scopeNew($query)
+    {
+        return $query->where('status', self::STATUS_NEW);
     }
 
     public function scopeResolved($query)
@@ -83,7 +89,12 @@ class Alert extends Model
 
     public function isActive(): bool
     {
-        return $this->status === self::STATUS_ACTIVE;
+        return in_array($this->status, [self::STATUS_NEW, self::STATUS_ACTIVE]);
+    }
+    
+    public function isNew(): bool
+    {
+        return $this->status === self::STATUS_NEW;
     }
 
     public function isResolved(): bool
@@ -104,7 +115,8 @@ class Alert extends Model
     public function getStatusLabelAttribute(): string
     {
         return match($this->status) {
-            self::STATUS_ACTIVE => 'Pendiente',
+            self::STATUS_NEW => 'Activa',
+            self::STATUS_ACTIVE => 'Orden Enviada',
             self::STATUS_RESOLVED => 'Resuelta',
             self::STATUS_ORDER_SENT => 'Orden Enviada',
             default => 'Desconocido'
