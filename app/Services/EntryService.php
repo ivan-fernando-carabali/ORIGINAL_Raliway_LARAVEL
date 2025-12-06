@@ -12,9 +12,9 @@ use Illuminate\Support\Facades\Log;
 
 class EntryService
 {
-    protected ?AlertService $alertService;
+    protected AlertService $alertService;
 
-    public function __construct(AlertService $alertService = null)
+    public function __construct(AlertService $alertService)
     {
         $this->alertService = $alertService;
     }
@@ -22,7 +22,7 @@ class EntryService
     /**
      * 📄 Listar todas las entradas (OPTIMIZADO)
      */
-    public function getAllEntries($limit = null, $orderBy = 'created_at', $order = 'desc')
+    public function getAllEntries($limit = null, $orderBy = 'created_at', $order = 'desc', $dateFrom = null, $dateTo = null, $productId = null)
     {
         $query = Entry::query();
         
@@ -33,6 +33,21 @@ class EntryService
             'supplier:id,name',
             'user:id,name,lastname'
         ]);
+        
+        // Filtro por fecha desde
+        if ($dateFrom) {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+        
+        // Filtro por fecha hasta
+        if ($dateTo) {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+        
+        // Filtro por producto
+        if ($productId) {
+            $query->where('product_id', $productId);
+        }
         
         // Aplicar límite si se especifica
         if ($limit && is_numeric($limit) && $limit > 0) {
@@ -139,12 +154,13 @@ class EntryService
             }
 
             // Resolver alertas pendientes relacionadas con este producto
-            if ($this->alertService) {
-                // Primero resolver alertas pendientes por ingreso físico
-                $this->alertService->resolvePendingAlertsForProduct($entry->product_id);
-                // Luego verificar si hay nuevas alertas o si se resolvieron automáticamente
-                $this->alertService->checkStock($inventory);
-            }
+            // Primero resolver TODAS las alertas con estado "orden_enviada" y "pendiente" 
+            // para este producto porque cuando se hace una entrada, significa que se recibió la orden
+            $this->alertService->resolvePendingAlertsForProduct($entry->product_id);
+            
+            // Luego verificar si hay nuevas alertas o si se resolvieron automáticamente
+            // Solo crear nuevas alertas si el stock está realmente bajo y no había una orden_enviada recién resuelta
+            $this->alertService->checkStock($inventory);
 
             return $entry->load(['product', 'supplier']);
         });
@@ -189,9 +205,7 @@ class EntryService
                 $inventory->stock += $data['quantity'] - $oldQuantity;
                 $inventory->save();
 
-                if ($this->alertService) {
-                    $this->alertService->checkStock($inventory);
-                }
+                $this->alertService->checkStock($inventory);
             }
 
             return $entry->load(['product', 'supplier']);
@@ -218,9 +232,7 @@ class EntryService
                 }
                 $inventory->save();
 
-                if ($this->alertService) {
-                    $this->alertService->checkStock($inventory);
-                }
+                $this->alertService->checkStock($inventory);
             }
 
             $entry->delete();

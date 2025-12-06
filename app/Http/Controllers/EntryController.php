@@ -28,8 +28,11 @@ class EntryController extends Controller
         $limit = $request->get('limit', null);
         $orderBy = $request->get('order_by', 'created_at');
         $order = $request->get('order', 'desc');
+        $dateFrom = $request->get('date_from', null);
+        $dateTo = $request->get('date_to', null);
+        $productId = $request->get('product_id', null);
         
-        $data = $this->entryService->getAllEntries($limit, $orderBy, $order);
+        $data = $this->entryService->getAllEntries($limit, $orderBy, $order, $dateFrom, $dateTo, $productId);
 
         return response()->json([
             'status'  => 'success',

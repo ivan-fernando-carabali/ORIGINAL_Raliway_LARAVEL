@@ -9,35 +9,23 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            // category_id
-            if (!Schema::hasColumn('products', 'category_id')) {
-                $table->foreignId('category_id')->nullable()
-                    ->constrained('categories')
-                    ->nullOnDelete()
-                    ->cascadeOnUpdate();
-            }
+            // Hacer columnas opcionales (requiere doctrine/dbal para change())
+            $table->foreignId('category_id')->nullable()->change();
+            $table->string('reference', 50)->nullable()->change();
+            $table->string('unit_measurement', 10)->nullable()->change();
 
-            // reference
-            if (!Schema::hasColumn('products', 'reference')) {
-                $table->string('reference', 50)->nullable()->after('name');
-            }
+            // Cambiar a date y permitir null
+            $table->date('expiration_date')->nullable()->change();
 
-            // unit_measurement
-            if (!Schema::hasColumn('products', 'unit_measurement')) {
-                $table->string('unit_measurement', 10)->nullable()->after('reference');
+            // Agregar iconos
+            if (!Schema::hasColumn('products', 'icono1')) {
+                $table->string('icono1', 100)->nullable()->after('expiration_date');
             }
-
-            // expiration_date
-            if (!Schema::hasColumn('products', 'expiration_date')) {
-                $table->date('expiration_date')->nullable()->after('batch');
+            if (!Schema::hasColumn('products', 'icono2')) {
+                $table->string('icono2', 100)->nullable()->after('icono1');
             }
-
-            // iconos
-            foreach (['icono1', 'icono2', 'icono3'] as $index => $icon) {
-                if (!Schema::hasColumn('products', $icon)) {
-                    $afterColumn = $index === 0 ? 'expiration_date' : 'icono' . $index;
-                    $table->string($icon, 100)->nullable()->after($afterColumn);
-                }
+            if (!Schema::hasColumn('products', 'icono3')) {
+                $table->string('icono3', 100)->nullable()->after('icono2');
             }
         });
     }
@@ -45,15 +33,26 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            // Eliminar iconos si existen
-            foreach (['icono3', 'icono2', 'icono1'] as $icon) {
-                if (Schema::hasColumn('products', $icon)) {
-                    $table->dropColumn($icon);
-                }
+            // Eliminar iconos
+            if (Schema::hasColumn('products', 'icono3')) {
+                $table->dropColumn('icono3');
+            }
+            if (Schema::hasColumn('products', 'icono2')) {
+                $table->dropColumn('icono2');
+            }
+            if (Schema::hasColumn('products', 'icono1')) {
+                $table->dropColumn('icono1');
             }
 
-            // NO revertimos referencia, unit_measurement ni expiration_date
-            // porque no podemos cambiar columnas existentes sin doctrine/dbal
+            // Revertir nulabilidad (requiere doctrine/dbal para change())
+            $table->foreignId('category_id')->nullable(false)->change();
+            $table->string('reference', 50)->nullable(false)->change();
+            $table->string('unit_measurement', 10)->nullable(false)->change();
+
+            // Volver a dateTime no nulo
+            $table->dateTime('expiration_date')->nullable(false)->change();
         });
     }
 };
+
+

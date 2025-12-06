@@ -34,6 +34,21 @@ class OutputController extends Controller
     // Eager loading optimizado - solo campos necesarios
     $query->with(['product:id,name', 'inventory:id,stock', 'user:id,name,lastname']);
 
+    // Filtro por fecha desde
+    if ($request->has('date_from') && $request->date_from) {
+        $query->whereDate('created_at', '>=', $request->date_from);
+    }
+
+    // Filtro por fecha hasta
+    if ($request->has('date_to') && $request->date_to) {
+        $query->whereDate('created_at', '<=', $request->date_to);
+    }
+
+    // Filtro por producto
+    if ($request->has('product_id') && $request->product_id) {
+        $query->where('product_id', $request->product_id);
+    }
+
     // Aplicar límite si se especifica
     if ($request->has('limit') && is_numeric($request->limit) && $request->limit > 0) {
         $query->limit((int) $request->limit);

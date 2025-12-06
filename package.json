@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "prebuild": "node -e \"const fs = require('fs'); const path = require('path'); const dir = path.join(__dirname, 'resources', 'css'); if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }); } const file = path.join(dir, 'app.css'); if (!fs.existsSync(file)) { fs.writeFileSync(file, '@import \\'tailwindcss\\';\\n\\n@source \\'../../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php\\';\\n@source \\'../../../storage/framework/views/*.php\\';\\n@source \\'../../**/*.blade.php\\';\\n@source \\'../../**/*.js\\';\\n\\n@theme {\\n    --font-sans: \\'Instrument Sans\\', ui-sans-serif, system-ui, sans-serif, \\'Apple Color Emoji\\', \\'Segoe UI Emoji\\',\\n        \\'Segoe UI Symbol\\', \\'Noto Color Emoji\\';\\n}\\n'); }\"",
         "build": "vite build",
         "dev": "vite"
     },

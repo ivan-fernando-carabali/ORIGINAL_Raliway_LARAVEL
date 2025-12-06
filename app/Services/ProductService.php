@@ -41,15 +41,13 @@ class ProductService
                 'image' => $data['image'] ?? null,
             ]);
 
-            // 🔹 2. Crear inventario asociado al producto (opcional)
-            if (isset($data['cantidad']) || isset($data['min_stock']) || isset($data['location'])) {
-                Inventory::create([
-                    'product_id' => $product->id,
-                    'quantity' => $data['cantidad'] ?? 0,
-                    'min_stock' => $data['min_stock'] ?? 0,
-                    'location' => $data['location'] ?? 'Sin ubicación',
-                ]);
-            }
+            // 🔹 2. Crear inventario asociado al producto
+            Inventory::create([
+                'product_id' => $product->id,
+                'quantity' => $data['cantidad'] ?? 0,
+                'min_stock' => $data['min_stock'] ?? 0,
+                'location' => $data['location'] ?? 'Sin ubicación',
+            ]);
 
             return $product->load('inventory');
         });

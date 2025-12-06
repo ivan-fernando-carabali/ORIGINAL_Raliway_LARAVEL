@@ -4,85 +4,70 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Order extends Model
 {
-    use HasFactory;
-
-    // ==================================================
-    // 🧱 CAMPOS ASIGNABLES
-    // ==================================================
     protected $fillable = [
-        'user_id',
-        'product_id',
+        'status', // Cambiado de 'state' a 'status' para coincidir con la BD
+        'user_id', 
         'supplier_id',
-        'alert_id',
+        'product_id',
         'inventory_id',
-        'dep_buy_id',
+        'alert_id',
         'quantity',
-        'supplier_email',
-        'date',
-        'state'
+        'dep_buy_id',
+        'supplier_email', // Agregado para almacenar el email del proveedor
+        'notes',
+        'sent_at',
+        'received_at'
     ];
 
-    // ==================================================
-    // 🔄 CASTS
-    // ==================================================
-    protected $casts = [
-        'date' => 'date',
-        'quantity' => 'decimal:2',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-    ];
+    // Relaciones permitidas en includes
+    protected $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert'];
+    protected $allowFilter   = ['id', 'status'];
+    protected $allowSort     = ['id', 'status', 'created_at'];
 
-    // ==================================================
-    // ⚙️ CONFIGURACIÓN DE LISTAS BLANCAS PARA FILTROS
-    // ==================================================
-    protected array $allowIncluded = ['supplier', 'user', 'product', 'inventory', 'alert', 'depBuy'];
-    protected array $allowFilter   = ['id', 'state', 'supplier_id', 'product_id', 'user_id'];
-    protected array $allowSort     = ['id', 'state', 'date', 'created_at'];
-
-    // ==================================================
-    // 🔗 RELACIONES
-    // ==================================================
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function product()
-    {
-        return $this->belongsTo(Product::class);
-    }
-
+    // Relación con proveedor
     public function supplier()
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
-    public function alert()
+    // Relación con usuario
+    public function user()
     {
-        return $this->belongsTo(Alert::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
+    // Relación con producto
+    public function product()
+    {
+        return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    // Relación con inventario
     public function inventory()
     {
-        return $this->belongsTo(Inventory::class);
+        return $this->belongsTo(Inventory::class, 'inventory_id');
     }
 
-    public function depBuy()
+    // Relación con alerta
+    public function alert()
     {
-        return $this->belongsTo(DepBuy::class);
+        return $this->belongsTo(Alert::class, 'alert_id');
     }
 
-    // ==================================================
-    // 🔎 SCOPES (INCLUSIÓN, FILTRO, ORDEN, PAGINACIÓN)
-    // ==================================================
+    // Relación uno a muchos con productos (legacy)
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'order_id');
+    }
+
+    /* ----------------- SCOPES DINÁMICOS ----------------- */
     public function scopeIncluded(Builder $query)
     {
         if (empty($this->allowIncluded) || empty(request('included'))) {
-            return $query;
+            return;
         }
 
         $relations = explode(',', request('included'));
@@ -94,23 +79,20 @@ class Order extends Model
             }
         }
 
-        if (!empty($relations)) {
-            $query->with($relations);
-        }
-
-        return $query;
+        $query->with($relations);
     }
 
     public function scopeFilter(Builder $query)
     {
-        if (empty($this->allowFilter)) {
-            return $query;
+        if (empty($this->allowFilter) || empty(request('filter'))) {
+            return;
         }
 
-        $filters = request('filter', []) + request()->only($this->allowFilter);
+        $filters = request('filter');
+        $allowFilter = collect($this->allowFilter);
 
         foreach ($filters as $filter => $value) {
-            if (in_array($filter, $this->allowFilter)) {
+            if ($allowFilter->contains($filter)) {
                 if (is_numeric($value)) {
                     $query->where($filter, $value);
                 } elseif (strtotime($value)) {
@@ -120,71 +102,38 @@ class Order extends Model
                 }
             }
         }
-
-        return $query;
     }
 
     public function scopeSort(Builder $query)
     {
-        $sortFields = explode(',', request('sort', ''));
+        if (empty($this->allowSort) || empty(request('sort'))) {
+            return;
+        }
+
+        $sortFields = explode(',', request('sort'));
         $allowSort = collect($this->allowSort);
 
         foreach ($sortFields as $sortField) {
             $direction = 'asc';
-            if (substr($sortField, 0, 1) === '-') {
+            if (substr($sortField, 0, 1) == '-') {
                 $direction = 'desc';
                 $sortField = substr($sortField, 1);
             }
-
             if ($allowSort->contains($sortField)) {
                 $query->orderBy($sortField, $direction);
             }
         }
-
-        return $query;
     }
 
     public function scopeGetOrPaginate(Builder $query)
     {
-        $perPage = intval(request('perPage', 0));
-        return $perPage > 0 ? $query->paginate($perPage) : $query->get();
-    }
+        if (request('perPage')) {
+            $perPage = intval(request('perPage'));
+            if ($perPage) {
+                return $query->paginate($perPage);
+            }
+        }
 
-    // ==================================================
-    // 🧠 MÉTODOS AUXILIARES DE ESTADO
-    // ==================================================
-    public function isPending(): bool
-    {
-        return $this->state === 'pending';
-    }
-
-    public function isSent(): bool
-    {
-        return $this->state === 'sent';
-    }
-
-    public function isCompleted(): bool
-    {
-        return $this->state === 'completed';
-    }
-
-    public function isCancelled(): bool
-    {
-        return $this->state === 'cancelled';
-    }
-
-    public function markAsSent(): void
-    {
-        $this->update(['state' => 'sent']);
-    }
-
-    public function markAsCompleted(): void
-    {
-        $this->update(['state' => 'completed']);
-    }
-
-    public function cancel(): void
-    {
-        $this->update(['state' => 'cancelled']);
+        return $query->get();
     }
 }

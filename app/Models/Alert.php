@@ -29,6 +29,7 @@ class Alert extends Model
     const TYPE_OUT_OF_STOCK = 'sin_stock';
     const STATUS_ACTIVE = 'pendiente';
     const STATUS_RESOLVED = 'resuelta';
+    const STATUS_ORDER_SENT = 'orden_enviada';
 
     /* ----------------- RELACIONES ----------------- */
 
@@ -105,8 +106,14 @@ class Alert extends Model
         return match($this->status) {
             self::STATUS_ACTIVE => 'Pendiente',
             self::STATUS_RESOLVED => 'Resuelta',
+            self::STATUS_ORDER_SENT => 'Orden Enviada',
             default => 'Desconocido'
         };
+    }
+
+    public function isOrderSent(): bool
+    {
+        return $this->status === self::STATUS_ORDER_SENT;
     }
 
     public function getTypeLabelAttribute(): string

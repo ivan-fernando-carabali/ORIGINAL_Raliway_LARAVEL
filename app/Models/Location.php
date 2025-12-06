@@ -4,90 +4,73 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Location extends Model
 {
-    /**
-     * 🔒 Campos rellenables
-     */
-    protected $fillable = [
-        'warehouse_id',
-        'aisle',    // agregado de la nueva versión
-        'row',
-        'level',    // si necesitas 'level' también
-        'capacity',
-    ];
+    // Nombre de la tabla (ajusta según tu migración)
+    protected $table = 'Locations';
 
-    /**
-     * 🏷 Nombre de la tabla (opcional, si no sigue convención plural)
-     */
-    protected $table = 'locations';
+    // Campos permitidos en asignación masiva
+    protected $fillable = ['row', 'level', 'capacity', 'warehouse_id'];
 
-    /**
-     * ⚙️ Listas blancas para queries dinámicas
-     */
+    // Listas blancas para querys dinámicas
     protected array $allowIncluded = ['warehouse'];
-    protected array $allowFilter   = ['row', 'level', 'aisle'];
-    protected array $allowSort     = ['row', 'level', 'aisle'];
+    protected array $allowFilter   = ['row', 'level'];
+    protected array $allowSort     = ['row', 'level'];
 
     /* ================== RELACIONES ================== */
-
-    /**
-     * 🔗 Relación con el almacén
-     */
-    public function warehouse(): BelongsTo
+    public function warehouse()
     {
         return $this->belongsTo(Warehouse::class, 'warehouse_id');
     }
 
-    /**
-     * 🔗 Relación con inventarios
-     */
-    public function inventories(): HasMany
+    public function inventories()
     {
-        return $this->hasMany(Inventory::class, 'location_id');
-    }
-
-    /**
-     * 🔗 Relación con entradas (opcional)
-     */
-    public function entries(): HasMany
-    {
-        return $this->hasMany(Entry::class, 'location_id');
+        return $this->hasMany(Inventory::class, 'Location_id');
     }
 
     /* ================== SCOPES ================== */
 
-    public function scopeIncluded(Builder $query): Builder
+    public function scopeIncluded(Builder $query)
     {
-        $relations = explode(',', request('included', ''));
-        $relations = array_filter($relations, fn($rel) => in_array($rel, $this->allowIncluded));
+        if (empty(request('included'))) {
+            return $query;
+        }
 
-        return $relations ? $query->with($relations) : $query;
+        $relations = explode(',', request('included'));
+        $relations = array_filter($relations, fn($rel) => collect($this->allowIncluded)->contains($rel));
+
+        return $query->with($relations);
     }
 
-    public function scopeFilter(Builder $query): Builder
+    public function scopeFilter(Builder $query)
     {
-        $filters = request('filter', []);
-        foreach ($filters as $filter => $value) {
-            if (!in_array($filter, $this->allowFilter)) continue;
+        if (empty(request('filter'))) {
+            return $query;
+        }
 
-            if (is_numeric($value)) {
-                $query->where($filter, $value);
-            } elseif (strtotime($value)) {
-                $query->whereDate($filter, $value);
-            } else {
-                $query->where($filter, 'LIKE', "%$value%");
+        $filters = request('filter');
+        foreach ($filters as $filter => $value) {
+            if (collect($this->allowFilter)->contains($filter)) {
+                if (is_numeric($value)) {
+                    $query->where($filter, $value);
+                } elseif (strtotime($value)) {
+                    $query->whereDate($filter, $value);
+                } else {
+                    $query->where($filter, 'LIKE', '%' . $value . '%');
+                }
             }
         }
         return $query;
     }
 
-    public function scopeSort(Builder $query): Builder
+    public function scopeSort(Builder $query)
     {
-        $sortFields = explode(',', request('sort', ''));
+        if (empty(request('sort'))) {
+            return $query;
+        }
+
+        $sortFields = explode(',', request('sort'));
 
         foreach ($sortFields as $sortField) {
             $direction = 'asc';
@@ -96,17 +79,16 @@ class Location extends Model
                 $sortField = substr($sortField, 1);
             }
 
-            if (in_array($sortField, $this->allowSort)) {
+            if (collect($this->allowSort)->contains($sortField)) {
                 $query->orderBy($sortField, $direction);
             }
         }
-
         return $query;
     }
 
     public function scopeGetOrPaginate(Builder $query)
     {
-        $perPage = intval(request('perPage', 0));
+        $perPage = intval(request('perPage'));
         return $perPage > 0 ? $query->paginate($perPage) : $query->get();
     }
 }

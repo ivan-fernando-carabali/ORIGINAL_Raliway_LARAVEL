@@ -61,7 +61,7 @@ class RoleController extends Controller
     {
         // Solo los roles que un usuario puede elegir al registrarse
         $allowedRoles = ['empleado', 'invitado'];
-        $roles = collect($this->roleService->getAll())->whereIn('name', $allowedRoles)->values();
+        $roles = $this->roleService->getAll()->whereIn('name', $allowedRoles)->values();
         return response()->json($roles);
     }
 }

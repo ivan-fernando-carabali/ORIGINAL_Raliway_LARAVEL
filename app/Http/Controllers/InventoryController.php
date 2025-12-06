@@ -28,6 +28,7 @@ class InventoryController extends Controller
             $query = Inventory::query();
             
             // Eager loading optimizado - solo cargar relaciones necesarias
+            // Incluir proveedores del producto si se solicita
             $include = $request->get('include', '');
             if (str_contains($include, 'product.suppliers') || str_contains($include, 'product.supplier')) {
                 $query->with(['product:id,name,reference,codigo_de_barras', 'product.suppliers:id,name', 'warehouse:id,name']);
@@ -36,26 +37,19 @@ class InventoryController extends Controller
             }
             
             // Filtrar por stock mínimo si se especifica
-            if ($request->has('stock_min')) {
-                $stockMin = (int)$request->stock_min;
-                if ($stockMin === 1) {
-                    // stock_min=1 significa solo inventarios con stock > 0
-                    $query->where('stock', '>', 0);
-                } elseif ($stockMin > 1) {
-                    $query->where('stock', '>=', $stockMin);
-                }
+            if ($request->has('stock_min') && $request->stock_min > 0) {
+                $query->where('stock', '>=', $request->stock_min);
+            }
+            
+            // Filtrar solo con stock positivo
+            if ($request->has('stock_min') && $request->stock_min == 1) {
+                $query->where('stock', '>', 0);
             }
             
             // Seleccionar solo campos necesarios si se especifica
             if ($request->has('fields')) {
                 $fields = explode(',', $request->fields);
                 $fields = array_map('trim', $fields);
-                
-                // Mapear stock_actual a stock
-                $fields = array_map(function($field) {
-                    return $field === 'stock_actual' ? 'stock' : $field;
-                }, $fields);
-                
                 // Asegurar que siempre incluimos id y product_id
                 $fields = array_merge(['id', 'product_id'], array_diff($fields, ['id', 'product_id']));
                 $query->select($fields);
@@ -66,7 +60,6 @@ class InventoryController extends Controller
             
             $inventories = $query->get();
 
-            // Agregar stock_actual a cada item (ya se hace automáticamente por el accessor)
             return response()->json([
                 'status' => 'success',
                 'message' => 'Inventarios obtenidos correctamente.',
@@ -121,6 +114,14 @@ class InventoryController extends Controller
 
             // Crear inventario usando el servicio
             $response = $this->inventoryService->createOrUpdateInventory(new Request($validated));
+
+            // Obtener el inventario creado/actualizado
+            $inventory = Inventory::with('product')->latest()->first();
+
+            // 🚨 IMPORTANTE: Verificar stock y crear alertas automáticamente
+            if ($inventory) {
+                $this->alertService->checkStock($inventory);
+            }
 
             return $response;
         } catch (\Exception $e) {
@@ -181,6 +182,14 @@ class InventoryController extends Controller
 
             // Ajustar stock usando el servicio
             $response = $this->inventoryService->adjustStock(new Request($validated), $id);
+
+            // Obtener el inventario actualizado
+            $inventory = Inventory::with('product')->find($id);
+
+            // 🚨 Verificar stock después del ajuste
+            if ($inventory) {
+                $this->alertService->checkStock($inventory);
+            }
 
             return $response;
         } catch (\Exception $e) {

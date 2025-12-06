@@ -20,13 +20,13 @@ class AlertController extends Controller
 {
     $validated = $request->validate([
         'alert_type' => 'nullable|in:bajo_stock,sin_stock',
-        'status' => 'nullable|in:pendiente,resuelta',
+        'status' => 'nullable|in:pendiente,resuelta,orden_enviada',
         'product_id' => 'nullable|integer|exists:products,id',
         'date_from' => 'nullable|date',
         'date_to' => 'nullable|date|after_or_equal:date_from',
     ], [
         'alert_type.in' => 'El tipo de alerta debe ser: bajo_stock o sin_stock',
-        'status.in' => 'El estado debe ser: pendiente o resuelta',
+        'status.in' => 'El estado debe ser: pendiente, resuelta u orden_enviada',
         'product_id.exists' => 'El producto especificado no existe',
     ]);
 
@@ -43,6 +43,7 @@ class AlertController extends Controller
         $validated['status'] = match ($validated['status']) {
             'pendiente' => Alert::STATUS_ACTIVE,
             'resuelta'  => Alert::STATUS_RESOLVED,
+            'orden_enviada' => Alert::STATUS_ORDER_SENT,
             default     => $validated['status'],
         };
     }
@@ -53,6 +54,7 @@ class AlertController extends Controller
         $status = match($alert->status) {
             Alert::STATUS_ACTIVE => 'pendiente',
             Alert::STATUS_RESOLVED => 'resuelta',
+            Alert::STATUS_ORDER_SENT => 'orden_enviada',
             default => $alert->status,
         };
         
@@ -135,16 +137,16 @@ class AlertController extends Controller
     }
 
     /**
-     * 🔄 Actualizar el estado de una alerta (pendiente o resuelta)
+     * 🔄 Actualizar el estado de una alerta (pendiente, resuelta u orden_enviada)
      */
     public function updateStatus(Request $request, int $id): JsonResponse
     {
         try {
             $validated = $request->validate([
-                'status' => 'required|in:pendiente,resuelta',
+                'status' => 'required|in:pendiente,resuelta,orden_enviada',
             ], [
                 'status.required' => 'El estado es requerido',
-                'status.in' => 'El estado debe ser: pendiente o resuelta',
+                'status.in' => 'El estado debe ser: pendiente, resuelta u orden_enviada',
             ]);
 
             $alert = \App\Models\Alert::findOrFail($id);
@@ -153,6 +155,7 @@ class AlertController extends Controller
             $status = match($validated['status']) {
                 'pendiente' => \App\Models\Alert::STATUS_ACTIVE,
                 'resuelta' => \App\Models\Alert::STATUS_RESOLVED,
+                'orden_enviada' => \App\Models\Alert::STATUS_ORDER_SENT,
                 default => $validated['status'],
             };
 
@@ -165,8 +168,8 @@ class AlertController extends Controller
                 $updateData['resolved_at'] = now();
             }
 
-            // Si se marca como pendiente, limpiar fecha de resolución
-            if ($status === \App\Models\Alert::STATUS_ACTIVE) {
+            // Si se marca como pendiente o orden_enviada, limpiar fecha de resolución
+            if ($status === \App\Models\Alert::STATUS_ACTIVE || $status === \App\Models\Alert::STATUS_ORDER_SENT) {
                 $updateData['resolved_at'] = null;
             }
 
@@ -259,6 +262,10 @@ class AlertController extends Controller
                     [
                         'value' => Alert::STATUS_RESOLVED,
                         'label' => 'Resuelta'
+                    ],
+                    [
+                        'value' => Alert::STATUS_ORDER_SENT,
+                        'label' => 'Orden Enviada'
                     ],
                 ]
             ]

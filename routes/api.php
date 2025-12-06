@@ -27,6 +27,7 @@ use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\ProductSupplierController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UnitController;
+use App\Http\Controllers\ContactController;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,7 +39,7 @@ use App\Http\Controllers\UnitController;
 */
 
 // ✅ Ruta de prueba
-Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀']));
+Route::get('/ping', fn() => response()->json(['message' => 'API funcionando correctamente 🚀', 'version' => '2.0', 'deploy' => 'railway-fixed']));
 
 // ==========================
 // 🟢 RUTAS PÚBLICAS
@@ -47,6 +48,12 @@ Route::post('register', [AuthController::class, 'register']);
 Route::post('login', [AuthController::class, 'login']);
 Route::get('roles-public', [RoleController::class, 'getRolesForRegister']);
 Route::post('roles-public', [RoleController::class, 'store']);
+Route::post('contact', [ContactController::class, 'sendContactEmail']);
+
+// 📏 Unidades de medida (públicas para formularios)
+Route::get('units', [UnitController::class, 'index']);
+Route::post('units', [UnitController::class, 'store']);
+Route::get('units/{id}', [UnitController::class, 'show']);
 
 // ==========================
 // 🟡 RUTAS PROTEGIDAS (Auth)
@@ -66,7 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // 📊 Dashboard
     // ======================
     Route::get('dashboard/summary', [DashboardController::class, 'summary']);
-    Route::apiResource('units', UnitController::class);
+
     // ======================
     // 🚨 ALERTAS
     // ======================
@@ -98,18 +105,15 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // ======================
-   // 🧾 Categorías
-// ======================
-Route::prefix('categories')->group(function () {
-    Route::get('/', [CategoryController::class, 'index']);
-    Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
-    Route::post('initialize', [CategoryController::class, 'initialize']); // 🔥 NUEVA RUTA
-    Route::post('init', [CategoryController::class, 'init']);
-    Route::post('sync', [CategoryController::class, 'sync']);
-    Route::get('{id}', [CategoryController::class, 'show']);
-    Route::put('{id}', [CategoryController::class, 'update']); // Actualizar categoría
-    Route::delete('{id}', [CategoryController::class, 'destroy']); // Eliminar categoría
-});
+    // 🧾 Categorías
+    // ======================
+    Route::prefix('categories')->group(function () {
+        Route::get('/', [CategoryController::class, 'index']);
+        Route::post('/', [CategoryController::class, 'store']); // Crear categoría individual
+        Route::post('init', [CategoryController::class, 'init']);
+        Route::post('sync', [CategoryController::class, 'sync']);
+        Route::get('{id}', [CategoryController::class, 'show']);
+    });
 
     // ======================
     // 📦 Productos
@@ -156,14 +160,14 @@ Route::prefix('categories')->group(function () {
         Route::get('form-data', [OutputController::class, 'formData']);
     });
     Route::apiResource('outputs', OutputController::class);
-   
+
 
     // ======================
     // 🧾 Dependencias de Compra
     // ======================
     Route::apiResource('dep-buys', DepBuyController::class);
 
-    
+
    // ======================
 // 🧑‍🤝‍🧑 Proveedores
 // ======================
@@ -189,8 +193,4 @@ Route::apiResource('suppliers', SupplierController::class);
         Route::post('users/{id}/change-password', [UserController::class, 'changePassword']);
         Route::apiResource('roles', RoleController::class);
     });
-
-
-
-
 });

@@ -57,24 +57,20 @@ class DashboardController extends Controller
             'nombre' => '—',
             'cantidad' => 0,
             'total_entradas' => 0,
-            'total_salidas' => 0,
-            'veces_salio' => 0,
+            'veces_entro' => 0,
         ];
 
         if ($productIdConMasStock) {
             $producto = Product::find($productIdConMasStock);
             $entradaData = $entradasPorProducto->get($productIdConMasStock);
-            $salidaData = $salidasPorProducto->get($productIdConMasStock);
             $entradas = $entradaData ? ($entradaData->total_entradas ?? 0) : 0;
-            $salidas = $salidaData ? ($salidaData->total_salidas ?? 0) : 0;
-            $vecesSalio = Output::where('product_id', $productIdConMasStock)->count();
+            $vecesEntro = Entry::where('product_id', $productIdConMasStock)->count();
 
             $productoConMasStock = [
                 'nombre' => $producto ? $producto->name : '—',
                 'cantidad' => $maxStock,
                 'total_entradas' => $entradas,
-                'total_salidas' => $salidas,
-                'veces_salio' => $vecesSalio,
+                'veces_entro' => $vecesEntro,
             ];
         }
 

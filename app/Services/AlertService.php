@@ -61,7 +61,24 @@ class AlertService
             ->where('status', Alert::STATUS_ACTIVE)
             ->first();
 
+        // Verificar si hay una alerta recién resuelta por ingreso físico (en los últimos 5 minutos)
+        // Si es así, no crear una nueva alerta porque acabamos de hacer una entrada
+        // Esto incluye alertas que tenían estado "orden_enviada" que fueron resueltas
+        $recentlyResolvedOrderAlert = Alert::where('product_id', $product->id)
+            ->where('status', Alert::STATUS_RESOLVED)
+            ->whereNotNull('resolved_at')
+            ->where('resolved_at', '>=', now()->subMinutes(5))
+            ->where('message', 'like', '%Resuelta por ingreso físico%')
+            ->orderBy('resolved_at', 'desc')
+            ->first();
+
         if ($alertType) {
+            // Si hay una alerta recién resuelta con estado "orden_enviada", no crear nueva alerta
+            if ($recentlyResolvedOrderAlert) {
+                Log::info("⚠️ No se crea nueva alerta para producto {$product->id} porque hay una alerta recién resuelta por ingreso físico");
+                return;
+            }
+
             // Crear o actualizar alerta
             $message = $this->generateMessage($product, $currentStock, $alertType);
 
@@ -125,18 +142,36 @@ class AlertService
      */
     public function resolvePendingAlertsForProduct(int $productId): void
     {
+        // Buscar alertas con estado "pendiente" y "orden_enviada"
         $pendingAlerts = Alert::where('product_id', $productId)
-            ->where('status', Alert::STATUS_ACTIVE) // STATUS_ACTIVE = 'pendiente'
+            ->whereIn('status', [Alert::STATUS_ACTIVE, Alert::STATUS_ORDER_SENT])
             ->get();
 
+        Log::info("🔍 [EntryService] Buscando alertas para producto {$productId}. Encontradas: " . $pendingAlerts->count());
+        
+        if ($pendingAlerts->isEmpty()) {
+            Log::info("ℹ️ [EntryService] No se encontraron alertas pendientes o con orden enviada para el producto {$productId}");
+            return;
+        }
+
         foreach ($pendingAlerts as $alert) {
+            $previousStatus = $alert->status;
+            $alertId = $alert->id;
+            
+            Log::info("🔄 [EntryService] Resolviendo alerta ID {$alertId} - Estado actual: {$previousStatus}");
+            
             $alert->update([
                 'status' => Alert::STATUS_RESOLVED,
                 'message' => $alert->message . ' (Resuelta por ingreso físico)',
                 'resolved_at' => now(),
             ]);
+            
+            // Verificar que se actualizó correctamente
+            $alert->refresh();
+            Log::info("✅ [EntryService] Alerta ID {$alertId} actualizada. Estado anterior: {$previousStatus}, Estado nuevo: {$alert->status}");
 
-            Log::info("✅ Alerta pendiente ID {$alert->id} resuelta automáticamente por ingreso físico del producto {$productId}");
+            $statusLabel = $previousStatus === Alert::STATUS_ORDER_SENT ? 'orden enviada' : 'pendiente';
+            Log::info("✅ Alerta {$statusLabel} ID {$alertId} resuelta automáticamente por ingreso físico del producto {$productId}.");
         }
     }
 
