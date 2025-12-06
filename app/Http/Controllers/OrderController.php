@@ -110,11 +110,11 @@ class OrderController extends Controller
             }
 
 
-            // Marcar alerta como resuelta si existe
+            // Marcar alerta como pendiente (orden enviada) si existe
             if ($order->alert) {
                 $order->alert->update([
-                    'status' => Alert::STATUS_RESOLVED,
-                    'resolved_at' => now()
+                    'status' => Alert::STATUS_ACTIVE, // 'pendiente' = orden enviada
+                    'resolved_at' => null
                 ]);
             }
 
@@ -127,7 +127,7 @@ class OrderController extends Controller
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Error de validación',
+                'message' => 'Datos de validación incorrectos',
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
