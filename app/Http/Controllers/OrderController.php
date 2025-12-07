@@ -101,8 +101,21 @@ class OrderController extends Controller
             
             // Crear la orden usando DB::table directamente para asegurar que date se guarde correctamente
             try {
-                // Usar DB::table para insertar directamente y evitar problemas con el modelo
-                $orderId = DB::table('orders')->insertGetId([
+                // VALIDACIÓN FINAL: Asegurar que date nunca sea null o vacío
+                $finalDate = $orderData['date'];
+                if (empty($finalDate) || !is_string($finalDate)) {
+                    $finalDate = now()->format('Y-m-d');
+                    Log::warning('⚠️ Campo date estaba vacío o inválido, usando fecha actual: ' . $finalDate);
+                }
+                
+                // Validar formato de fecha una vez más
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $finalDate)) {
+                    $finalDate = now()->format('Y-m-d');
+                    Log::warning('⚠️ Formato de date inválido, usando fecha actual: ' . $finalDate);
+                }
+                
+                // Preparar array de inserción con date garantizado
+                $insertData = [
                     'product_id' => $orderData['product_id'],
                     'inventory_id' => $orderData['inventory_id'],
                     'supplier_id' => $orderData['supplier_id'],
@@ -111,11 +124,17 @@ class OrderController extends Controller
                     'user_id' => $orderData['user_id'],
                     'supplier_email' => $orderData['supplier_email'],
                     'dep_buy_id' => $orderData['dep_buy_id'],
-                    'date' => $orderData['date'], // Campo date explícitamente incluido
+                    'date' => $finalDate, // Campo date GARANTIZADO con valor válido
                     'status' => $orderData['status'],
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+                
+                Log::info('📋 Datos finales para inserción:', $insertData);
+                Log::info('📅 Valor final de date: ' . $finalDate . ' (tipo: ' . gettype($finalDate) . ')');
+                
+                // Usar DB::table para insertar directamente y evitar problemas con el modelo
+                $orderId = DB::table('orders')->insertGetId($insertData);
                 
                 Log::info('✅ Orden creada exitosamente con ID: ' . $orderId);
                 

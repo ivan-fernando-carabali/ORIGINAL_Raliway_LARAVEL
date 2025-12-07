@@ -12,11 +12,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('orders', function (Blueprint $table) {
-            // Modificar el campo date para que tenga un valor por defecto
-            // Esto asegura que si no se proporciona un valor, use la fecha actual
-            $table->date('date')->default(DB::raw('CURRENT_DATE'))->change();
-        });
+        // Usar DB::statement para modificar la columna directamente en MySQL
+        // Esto asegura que el campo date tenga un valor por defecto
+        DB::statement("ALTER TABLE `orders` MODIFY COLUMN `date` DATE NOT NULL DEFAULT (CURRENT_DATE)");
     }
 
     /**
