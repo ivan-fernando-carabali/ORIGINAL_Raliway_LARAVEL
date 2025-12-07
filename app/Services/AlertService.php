@@ -57,20 +57,21 @@ class AlertService
      */
     private function processAlert($product, Inventory $inventory, int $currentStock, ?string $alertType): void
     {
+        // OPTIMIZADO: Query más eficiente con select específico
         $activeAlert = Alert::where('product_id', $product->id)
             ->where('status', Alert::STATUS_NEW)
+            ->select('id', 'product_id', 'status') // Solo campos necesarios
             ->first();
 
-        // Verificar si hay una alerta recién resuelta por ingreso físico (en los últimos 5 minutos)
-        // Si es así, no crear una nueva alerta porque acabamos de hacer una entrada
-        // Esto incluye alertas que tenían estado "orden_enviada" que fueron resueltas
+        // OPTIMIZADO: Verificar si hay una alerta recién resuelta (query más eficiente)
         $recentlyResolvedOrderAlert = Alert::where('product_id', $product->id)
             ->where('status', Alert::STATUS_RESOLVED)
             ->whereNotNull('resolved_at')
             ->where('resolved_at', '>=', now()->subMinutes(5))
             ->where('message', 'like', '%Resuelta por ingreso físico%')
-            ->orderBy('resolved_at', 'desc')
-            ->first();
+            ->select('id') // Solo necesitamos saber si existe
+            ->limit(1) // Limitar a 1 para optimizar
+            ->exists();
 
         if ($alertType) {
             // Si hay una alerta recién resuelta con estado "orden_enviada", no crear nueva alerta
@@ -111,37 +112,59 @@ class AlertService
     private function notifyUsers(Alert $alert): void
     {
         try {
+            // OPTIMIZADO: Ejecutar en segundo plano para no bloquear la respuesta
+            if (config('queue.default') !== 'sync') {
+                // Si hay queue configurado, ejecutar en segundo plano
+                dispatch(function () use ($alert) {
+                    $this->sendAlertEmails($alert);
+                })->afterResponse();
+            } else {
+                // Si no hay queue, ejecutar directamente pero con timeout
+                set_time_limit(5); // Máximo 5 segundos para envío de correos
+                $this->sendAlertEmails($alert);
+            }
+        } catch (\Exception $e) {
+            Log::error("❌ Error general al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Envía los correos de alerta (método separado para poder ejecutarse en segundo plano)
+     */
+    private function sendAlertEmails(Alert $alert): void
+    {
+        try {
             Log::info('📧 ========== INICIANDO ENVÍO DE EMAIL DE ALERTA ==========');
             Log::info('📧 Alerta ID: ' . $alert->id);
             
-            $users = User::whereHas('role', function ($query) {
-                $query->whereIn('name', ['admin', 'empleado']);
-            })->get();
+            // OPTIMIZADO: Query más eficiente con eager loading
+            $users = User::with('role')
+                ->whereHas('role', function ($query) {
+                    $query->whereIn('name', ['admin', 'empleado']);
+                })
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->select('id', 'name', 'email') // Solo campos necesarios
+                ->get();
 
             Log::info('📧 Usuarios encontrados para notificar: ' . $users->count());
 
             foreach ($users as $user) {
-                if ($user->email) {
-                    try {
-                        Log::info('📧 Enviando notificación de alerta a: ' . $user->email);
-                        $user->notify(new StockAlertNotification($alert));
-                        Log::info('✅ Notificación de alerta enviada exitosamente a: ' . $user->email);
-                    } catch (\Swift_TransportException $e) {
-                        Log::error('❌ Error SMTP enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
-                    } catch (\Exception $e) {
-                        Log::error('❌ Error enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
-                        Log::error('❌ Stack trace: ' . $e->getTraceAsString());
-                    }
-                } else {
-                    Log::warning('⚠️ Usuario ' . $user->id . ' no tiene email configurado');
+                try {
+                    Log::info('📧 Enviando notificación de alerta a: ' . $user->email);
+                    $user->notify(new StockAlertNotification($alert));
+                    Log::info('✅ Notificación de alerta enviada exitosamente a: ' . $user->email);
+                } catch (\Swift_TransportException $e) {
+                    Log::error('❌ Error SMTP enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
+                } catch (\Exception $e) {
+                    Log::error('❌ Error enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
                 }
             }
             
             Log::info('📧 ========== FIN ENVÍO DE EMAIL DE ALERTA ==========');
 
         } catch (\Exception $e) {
-            Log::error("❌ Error general al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");
-            Log::error('❌ Stack trace: ' . $e->getTraceAsString());
+            Log::error("❌ Error en sendAlertEmails para alerta {$alert->id}: {$e->getMessage()}");
         }
     }
 

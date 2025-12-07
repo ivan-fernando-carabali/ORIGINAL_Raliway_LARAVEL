@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use App\Services\OutputService;
-
 use App\Services\AlertService;
 use App\Models\Output;
 use App\Models\Inventory;
@@ -125,20 +125,24 @@ class OutputController extends Controller
     }
 
 
-    // 🔍 Validar que el lote existe en las entradas
+    // 🔍 Validar que el lote existe en las entradas (OPTIMIZADO)
     $loteIngresado = $validated['lot'] ?? null;
     if ($loteIngresado) {
         $loteIngresado = trim(strtoupper($loteIngresado));
 
-        // Verificar si existe una entrada con este lote para este producto
+        // Verificar si existe una entrada con este lote para este producto (query optimizada)
         $entradaExiste = Entry::where('product_id', $inventory->product_id)
             ->whereRaw('UPPER(TRIM(lot)) = ?', [$loteIngresado])
+            ->limit(1) // Limitar a 1 para optimizar
             ->exists();
 
         if (!$entradaExiste) {
-            // Obtener lotes disponibles para el mensaje de error
+            // Obtener solo los primeros 10 lotes disponibles para el mensaje de error (optimizado)
             $lotesDisponibles = Entry::where('product_id', $inventory->product_id)
+                ->whereNotNull('lot')
+                ->where('lot', '!=', '')
                 ->distinct()
+                ->limit(10) // Limitar a 10 para no sobrecargar
                 ->pluck('lot')
                 ->map(function($lot) {
                     return strtoupper(trim($lot));
@@ -179,16 +183,24 @@ class OutputController extends Controller
     $inventory->stock -= $validated['quantity'];
     $inventory->save();
 
+    // 🔔 Verificar stock y crear/actualizar alertas (OPTIMIZADO - ejecutar rápido)
+    // Ejecutar con timeout limitado para no bloquear más de lo necesario
+    try {
+        $inventoryFresh = $inventory->fresh(['product']); // Solo cargar product, no todas las relaciones
+        set_time_limit(5); // Máximo 5 segundos para checkStock
+        $this->alertService->checkStock($inventoryFresh);
+    } catch (\Exception $e) {
+        // Si falla la verificación de alertas, no fallar la salida
+        Log::error('Error verificando alertas después de salida: ' . $e->getMessage());
+    }
 
-    // 🔔 Verificar stock y crear/actualizar alertas como PENDIENTE
-    // Si el stock queda bajo o sin stock, la alerta debe estar pendiente
-    $this->alertService->checkStock($inventory->fresh());
-
+    // Cargar solo las relaciones necesarias para la respuesta (optimizado)
+    $output->load(['product:id,name', 'inventory:id,stock,product_id', 'user:id,name,lastname']);
 
     return response()->json([
         'status' => 'success',
         'message' => '✅ Salida registrada correctamente.',
-        'data' => $output->load(['product', 'inventory', 'user']),
+        'data' => $output,
     ], 201);
 }
 
