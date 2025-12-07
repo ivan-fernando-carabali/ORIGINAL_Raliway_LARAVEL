@@ -133,10 +133,42 @@ class OrderController extends Controller
                 Log::info('📋 Datos finales para inserción:', $insertData);
                 Log::info('📅 Valor final de date: ' . $finalDate . ' (tipo: ' . gettype($finalDate) . ')');
                 
-                // Usar DB::table para insertar directamente y evitar problemas con el modelo
-                $orderId = DB::table('orders')->insertGetId($insertData);
+                // Verificar una vez más que date esté presente y sea válido
+                if (!isset($insertData['date']) || empty($insertData['date'])) {
+                    $insertData['date'] = now()->format('Y-m-d');
+                    Log::warning('⚠️ Campo date faltante en insertData, usando fecha actual: ' . $insertData['date']);
+                }
                 
-                Log::info('✅ Orden creada exitosamente con ID: ' . $orderId);
+                // Usar DB::table para insertar directamente y evitar problemas con el modelo
+                try {
+                    $orderId = DB::table('orders')->insertGetId($insertData);
+                    Log::info('✅ Orden creada exitosamente con ID: ' . $orderId);
+                } catch (\Illuminate\Database\QueryException $qe) {
+                    // Si el error es específicamente sobre el campo date, intentar con SQL directo
+                    if (strpos($qe->getMessage(), "Field 'date'") !== false) {
+                        Log::error('❌ Error específico con campo date, intentando inserción con SQL directo');
+                        // Intentar inserción con SQL directo incluyendo explícitamente el campo date
+                        $sql = "INSERT INTO `orders` (`product_id`, `inventory_id`, `supplier_id`, `quantity`, `alert_id`, `user_id`, `supplier_email`, `dep_buy_id`, `date`, `status`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                        DB::insert($sql, [
+                            $insertData['product_id'],
+                            $insertData['inventory_id'],
+                            $insertData['supplier_id'],
+                            $insertData['quantity'],
+                            $insertData['alert_id'],
+                            $insertData['user_id'],
+                            $insertData['supplier_email'],
+                            $insertData['dep_buy_id'],
+                            $insertData['date'], // Campo date explícitamente incluido
+                            $insertData['status'],
+                            $insertData['created_at'],
+                            $insertData['updated_at']
+                        ]);
+                        $orderId = DB::getPdo()->lastInsertId();
+                        Log::info('✅ Orden creada exitosamente con SQL directo, ID: ' . $orderId);
+                    } else {
+                        throw $qe;
+                    }
+                }
                 
                 // Cargar la orden usando el modelo para tener acceso a las relaciones
                 $order = Order::with(['product', 'supplier', 'alert', 'inventory', 'user'])->find($orderId);

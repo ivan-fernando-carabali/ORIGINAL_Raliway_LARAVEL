@@ -12,9 +12,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Usar DB::statement para modificar la columna directamente en MySQL
-        // Esto asegura que el campo date tenga un valor por defecto
-        DB::statement("ALTER TABLE `orders` MODIFY COLUMN `date` DATE NOT NULL DEFAULT (CURRENT_DATE)");
+        try {
+            // Intentar modificar la columna con valor por defecto
+            // Usar sintaxis compatible con diferentes versiones de MySQL
+            DB::statement("ALTER TABLE `orders` MODIFY COLUMN `date` DATE NOT NULL DEFAULT (CURRENT_DATE)");
+        } catch (\Exception $e) {
+            // Si falla, intentar con sintaxis alternativa (sin paréntesis)
+            try {
+                DB::statement("ALTER TABLE `orders` MODIFY COLUMN `date` DATE NOT NULL DEFAULT CURRENT_DATE");
+            } catch (\Exception $e2) {
+                // Si ambas fallan, al menos hacer el campo nullable temporalmente
+                // El código del controlador se encargará de proporcionar siempre un valor
+                DB::statement("ALTER TABLE `orders` MODIFY COLUMN `date` DATE NULL");
+            }
+        }
     }
 
     /**
