@@ -115,7 +115,8 @@ class OutputController extends Controller
         'motivo'       => 'nullable|string|max:255',
     ]);
 
-    $inventory = Inventory::with('product')->find($validated['inventory_id']);
+    // OPTIMIZADO: Cargar solo campos necesarios del inventario y producto
+    $inventory = Inventory::with('product:id,name')->find($validated['inventory_id']);
 
     if (!$inventory) {
         return response()->json([
@@ -125,24 +126,26 @@ class OutputController extends Controller
     }
 
 
-    // 🔍 Validar que el lote existe en las entradas (OPTIMIZADO)
+    // 🔍 Validar que el lote existe en las entradas (OPTIMIZADO - solo si se proporciona lote)
     $loteIngresado = $validated['lot'] ?? null;
     if ($loteIngresado) {
         $loteIngresado = trim(strtoupper($loteIngresado));
 
-        // Verificar si existe una entrada con este lote para este producto (query optimizada)
+        // OPTIMIZADO: Query más rápida usando índice y solo verificar existencia
         $entradaExiste = Entry::where('product_id', $inventory->product_id)
             ->whereRaw('UPPER(TRIM(lot)) = ?', [$loteIngresado])
-            ->limit(1) // Limitar a 1 para optimizar
+            ->select('id') // Solo necesitamos saber si existe
+            ->limit(1)
             ->exists();
 
         if (!$entradaExiste) {
-            // Obtener solo los primeros 10 lotes disponibles para el mensaje de error (optimizado)
+            // OPTIMIZADO: Obtener solo 5 lotes para el mensaje de error (más rápido)
             $lotesDisponibles = Entry::where('product_id', $inventory->product_id)
                 ->whereNotNull('lot')
                 ->where('lot', '!=', '')
+                ->select('lot') // Solo el campo lot
                 ->distinct()
-                ->limit(10) // Limitar a 10 para no sobrecargar
+                ->limit(5) // Reducido a 5 para más velocidad
                 ->pluck('lot')
                 ->map(function($lot) {
                     return strtoupper(trim($lot));
@@ -183,25 +186,29 @@ class OutputController extends Controller
     $inventory->stock -= $validated['quantity'];
     $inventory->save();
 
-    // 🔔 Verificar stock y crear/actualizar alertas (OPTIMIZADO - ejecutar rápido)
-    // Ejecutar con timeout limitado para no bloquear más de lo necesario
-    try {
-        $inventoryFresh = $inventory->fresh(['product']); // Solo cargar product, no todas las relaciones
-        set_time_limit(5); // Máximo 5 segundos para checkStock
-        $this->alertService->checkStock($inventoryFresh);
-    } catch (\Exception $e) {
-        // Si falla la verificación de alertas, no fallar la salida
-        Log::error('Error verificando alertas después de salida: ' . $e->getMessage());
-    }
-
     // Cargar solo las relaciones necesarias para la respuesta (optimizado)
     $output->load(['product:id,name', 'inventory:id,stock,product_id', 'user:id,name,lastname']);
 
-    return response()->json([
+    // Preparar respuesta ANTES de verificar alertas
+    $response = response()->json([
         'status' => 'success',
         'message' => '✅ Salida registrada correctamente.',
         'data' => $output,
     ], 201);
+
+    // 🔔 Verificar stock y crear/actualizar alertas DESPUÉS de preparar respuesta
+    // Esto se ejecutará después de enviar la respuesta al cliente
+    $inventoryFresh = $inventory->fresh(['product:id,name']);
+    register_shutdown_function(function () use ($inventoryFresh) {
+        try {
+            set_time_limit(20); // Máximo 20 segundos para checkStock y envío de correos
+            app(AlertService::class)->checkStock($inventoryFresh);
+        } catch (\Exception $e) {
+            Log::error('Error verificando alertas después de salida: ' . $e->getMessage());
+        }
+    });
+
+    return $response;
 }
 
 

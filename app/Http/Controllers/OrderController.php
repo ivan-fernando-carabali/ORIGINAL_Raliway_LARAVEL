@@ -227,10 +227,13 @@ class OrderController extends Controller
                     $order->sent_at = now();
                     $order->save();
                     Log::info('✅ Estado de orden actualizado a "enviado"');
-                } catch (TransportException $e) {
+                } catch (\Symfony\Component\Mailer\Exception\TransportException $e) {
                     $emailError = 'Error de transporte SMTP: ' . $e->getMessage();
                     Log::error('❌ Error SMTP enviando email de orden a ' . $supplierEmail . ': ' . $emailError);
                     Log::error('❌ Código de error: ' . $e->getCode());
+                } catch (\Swift_TransportException $e) {
+                    $emailError = 'Error de transporte SMTP (Swift): ' . $e->getMessage();
+                    Log::error('❌ Error SMTP (Swift) enviando email de orden a ' . $supplierEmail . ': ' . $emailError);
                 } catch (\Exception $e) {
                     $emailError = $e->getMessage();
                     Log::error('❌ Error general enviando email de orden a ' . $supplierEmail . ': ' . $emailError);

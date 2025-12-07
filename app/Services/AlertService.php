@@ -112,19 +112,13 @@ class AlertService
     private function notifyUsers(Alert $alert): void
     {
         try {
-            // OPTIMIZADO: Ejecutar en segundo plano para no bloquear la respuesta
-            if (config('queue.default') !== 'sync') {
-                // Si hay queue configurado, ejecutar en segundo plano
-                dispatch(function () use ($alert) {
-                    $this->sendAlertEmails($alert);
-                })->afterResponse();
-            } else {
-                // Si no hay queue, ejecutar directamente pero con timeout
-                set_time_limit(5); // Máximo 5 segundos para envío de correos
-                $this->sendAlertEmails($alert);
-            }
+            // Ejecutar envío de correos directamente (ya estamos en segundo plano desde OutputController)
+            // Aumentar timeout para dar tiempo suficiente al envío de correos
+            set_time_limit(15); // Máximo 15 segundos para envío de correos
+            $this->sendAlertEmails($alert);
         } catch (\Exception $e) {
             Log::error("❌ Error general al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");
+            Log::error('❌ Stack trace: ' . $e->getTraceAsString());
         }
     }
 
@@ -152,12 +146,21 @@ class AlertService
             foreach ($users as $user) {
                 try {
                     Log::info('📧 Enviando notificación de alerta a: ' . $user->email);
-                    $user->notify(new StockAlertNotification($alert));
+                    
+                    // Cargar la alerta con relaciones necesarias para el correo
+                    $alertWithRelations = $alert->loadMissing(['inventory.product']);
+                    
+                    // Enviar notificación directamente (síncrono)
+                    $user->notify(new StockAlertNotification($alertWithRelations));
+                    
                     Log::info('✅ Notificación de alerta enviada exitosamente a: ' . $user->email);
+                } catch (\Symfony\Component\Mailer\Exception\TransportException $e) {
+                    Log::error('❌ Error SMTP (Symfony) enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
                 } catch (\Swift_TransportException $e) {
-                    Log::error('❌ Error SMTP enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
+                    Log::error('❌ Error SMTP (Swift) enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
                 } catch (\Exception $e) {
                     Log::error('❌ Error enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
+                    Log::error('❌ Stack trace: ' . $e->getTraceAsString());
                 }
             }
             
