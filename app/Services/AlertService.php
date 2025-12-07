@@ -112,9 +112,8 @@ class AlertService
     private function notifyUsers(Alert $alert): void
     {
         try {
-            // Ejecutar envío de correos directamente (ya estamos en segundo plano desde OutputController)
-            // Aumentar timeout para dar tiempo suficiente al envío de correos
-            set_time_limit(15); // Máximo 15 segundos para envío de correos
+            // Ejecutar envío de correos directamente con timeout suficiente
+            set_time_limit(30); // Máximo 30 segundos para envío de correos
             $this->sendAlertEmails($alert);
         } catch (\Exception $e) {
             Log::error("❌ Error general al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");

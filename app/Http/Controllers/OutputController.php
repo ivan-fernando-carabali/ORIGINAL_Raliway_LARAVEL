@@ -196,17 +196,30 @@ class OutputController extends Controller
         'data' => $output,
     ], 201);
 
-    // 🔔 Verificar stock y crear/actualizar alertas DESPUÉS de preparar respuesta
-    // Esto se ejecutará después de enviar la respuesta al cliente
+    // 🔔 Verificar stock y crear/actualizar alertas (OPTIMIZADO - ejecutar después de respuesta)
+    // Usar fastcgi_finish_request si está disponible, sino ejecutar con timeout
     $inventoryFresh = $inventory->fresh(['product:id,name']);
-    register_shutdown_function(function () use ($inventoryFresh) {
+    
+    // Intentar ejecutar después de enviar respuesta
+    if (function_exists('fastcgi_finish_request')) {
+        // Si fastcgi está disponible, ejecutar después de enviar respuesta
+        register_shutdown_function(function () use ($inventoryFresh) {
+            try {
+                set_time_limit(30); // Máximo 30 segundos para checkStock y envío de correos
+                app(AlertService::class)->checkStock($inventoryFresh);
+            } catch (\Exception $e) {
+                Log::error('Error verificando alertas después de salida: ' . $e->getMessage());
+            }
+        });
+    } else {
+        // Si no hay fastcgi, ejecutar directamente pero con timeout
         try {
-            set_time_limit(20); // Máximo 20 segundos para checkStock y envío de correos
-            app(AlertService::class)->checkStock($inventoryFresh);
+            set_time_limit(10); // Máximo 10 segundos para iniciar el proceso
+            $this->alertService->checkStock($inventoryFresh);
         } catch (\Exception $e) {
             Log::error('Error verificando alertas después de salida: ' . $e->getMessage());
         }
-    });
+    }
 
     return $response;
 }
