@@ -111,57 +111,37 @@ class AlertService
     private function notifyUsers(Alert $alert): void
     {
         try {
-            // Validar configuración de correo antes de enviar
-            $mailConfig = [
-                'mailer' => config('mail.default'),
-                'host' => config('mail.mailers.smtp.host'),
-                'port' => config('mail.mailers.smtp.port'),
-                'username' => config('mail.mailers.smtp.username'),
-                'from_address' => config('mail.from.address'),
-            ];
-            
-            Log::info('📧 Enviando notificaciones de alerta. Configuración de correo:', $mailConfig);
-            
-            // Verificar que la configuración de correo esté completa
-            if ($mailConfig['mailer'] === 'log') {
-                Log::warning('⚠️ MAIL_MAILER está configurado como "log". Las notificaciones de alerta se guardarán en logs en lugar de enviarse por correo.');
-            } elseif (empty($mailConfig['host']) || empty($mailConfig['username'])) {
-                Log::error('❌ Configuración de correo incompleta para alertas. Verifica las variables de entorno MAIL_HOST y MAIL_USERNAME en Railway.');
-            }
+            Log::info('📧 ========== INICIANDO ENVÍO DE EMAIL DE ALERTA ==========');
+            Log::info('📧 Alerta ID: ' . $alert->id);
             
             $users = User::whereHas('role', function ($query) {
                 $query->whereIn('name', ['admin', 'empleado']);
             })->get();
 
-            if ($users->isEmpty()) {
-                Log::info('⚠️ No hay usuarios con rol admin o empleado para notificar sobre la alerta.');
-                return;
-            }
-
-            Log::info("📨 Enviando notificaciones a {$users->count()} usuarios para la alerta {$alert->id}");
+            Log::info('📧 Usuarios encontrados para notificar: ' . $users->count());
 
             foreach ($users as $user) {
-                try {
-                    $user->notify(new StockAlertNotification($alert));
-                    Log::info("✅ Notificación enviada a usuario {$user->id} ({$user->email})");
-                } catch (\Swift_TransportException $e) {
-                    Log::error("❌ Error de conexión SMTP al enviar notificación a {$user->email}:", [
-                        'error' => $e->getMessage(),
-                        'user_id' => $user->id,
-                    ]);
-                } catch (\Exception $e) {
-                    Log::error("❌ Error al enviar notificación a usuario {$user->id}:", [
-                        'error' => $e->getMessage(),
-                        'email' => $user->email,
-                    ]);
+                if ($user->email) {
+                    try {
+                        Log::info('📧 Enviando notificación de alerta a: ' . $user->email);
+                        $user->notify(new StockAlertNotification($alert));
+                        Log::info('✅ Notificación de alerta enviada exitosamente a: ' . $user->email);
+                    } catch (\Swift_TransportException $e) {
+                        Log::error('❌ Error SMTP enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
+                    } catch (\Exception $e) {
+                        Log::error('❌ Error enviando notificación de alerta a ' . $user->email . ': ' . $e->getMessage());
+                        Log::error('❌ Stack trace: ' . $e->getTraceAsString());
+                    }
+                } else {
+                    Log::warning('⚠️ Usuario ' . $user->id . ' no tiene email configurado');
                 }
             }
+            
+            Log::info('📧 ========== FIN ENVÍO DE EMAIL DE ALERTA ==========');
 
         } catch (\Exception $e) {
-            Log::error("❌ Error general al enviar notificaciones de alerta {$alert->id}:", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error("❌ Error general al enviar notificación de alerta {$alert->id}: {$e->getMessage()}");
+            Log::error('❌ Stack trace: ' . $e->getTraceAsString());
         }
     }
 
