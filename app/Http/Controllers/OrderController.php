@@ -207,11 +207,41 @@ class OrderController extends Controller
             
             if ($supplierEmail) {
                 try {
-                    Log::info('📧 Intentando enviar email de orden a: ' . $supplierEmail);
-                    Log::info('📧 Configuración de correo - MAIL_MAILER: ' . config('mail.default'));
-                    Log::info('📧 Configuración de correo - MAIL_HOST: ' . config('mail.mailers.smtp.host'));
+                    Log::info('📧 ========== INICIANDO ENVÍO DE EMAIL ==========');
+                    Log::info('📧 Destinatario: ' . $supplierEmail);
+                    Log::info('📧 Orden ID: ' . $order->id);
                     
-                    Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
+                    // Verificar configuración de correo
+                    $mailConfig = [
+                        'MAIL_MAILER' => env('MAIL_MAILER', 'not set'),
+                        'MAIL_HOST' => env('MAIL_HOST', 'not set'),
+                        'MAIL_PORT' => env('MAIL_PORT', 'not set'),
+                        'MAIL_USERNAME' => env('MAIL_USERNAME', 'not set'),
+                        'MAIL_ENCRYPTION' => env('MAIL_ENCRYPTION', 'not set'),
+                        'MAIL_FROM_ADDRESS' => env('MAIL_FROM_ADDRESS', 'not set'),
+                        'MAIL_FROM_NAME' => env('MAIL_FROM_NAME', 'not set'),
+                    ];
+                    Log::info('📧 Configuración de correo (env):', $mailConfig);
+                    
+                    // Verificar configuración cargada
+                    Log::info('📧 Configuración de correo (config):');
+                    Log::info('  - default: ' . config('mail.default'));
+                    Log::info('  - host: ' . config('mail.mailers.smtp.host'));
+                    Log::info('  - port: ' . config('mail.mailers.smtp.port'));
+                    Log::info('  - encryption: ' . config('mail.mailers.smtp.encryption'));
+                    Log::info('  - username: ' . (config('mail.mailers.smtp.username') ? 'SET' : 'NOT SET'));
+                    Log::info('  - from.address: ' . config('mail.from.address'));
+                    Log::info('  - from.name: ' . config('mail.from.name'));
+                    
+                    // Verificar si el Mailable está en cola
+                    $mailable = new SupplierOrderMail($order);
+                    if ($mailable instanceof \Illuminate\Contracts\Queue\ShouldQueue) {
+                        Log::warning('⚠️ El Mailable está en cola. Verifica que el queue worker esté corriendo.');
+                    }
+                    
+                    // Intentar enviar el correo
+                    Log::info('📧 Enviando correo...');
+                    Mail::to($supplierEmail)->send($mailable);
                     Log::info('✅ Email de orden enviado exitosamente a: ' . $supplierEmail);
                     $emailSent = true;
                     
@@ -219,12 +249,20 @@ class OrderController extends Controller
                     $order->status = 'enviado';
                     $order->sent_at = now();
                     $order->save();
+                    Log::info('✅ Estado de orden actualizado a "enviado"');
+                } catch (\Swift_TransportException $e) {
+                    $emailError = 'Error de transporte SMTP: ' . $e->getMessage();
+                    Log::error('❌ Error SMTP enviando email de orden a ' . $supplierEmail . ': ' . $emailError);
+                    Log::error('❌ Código de error: ' . $e->getCode());
+                    Log::error('❌ Stack trace: ' . $e->getTraceAsString());
                 } catch (\Exception $e) {
                     $emailError = $e->getMessage();
-                    Log::error('❌ Error enviando email de orden a ' . $supplierEmail . ': ' . $emailError);
-                    Log::error('❌ Stack trace del error de email: ' . $e->getTraceAsString());
+                    Log::error('❌ Error general enviando email de orden a ' . $supplierEmail . ': ' . $emailError);
+                    Log::error('❌ Clase de excepción: ' . get_class($e));
+                    Log::error('❌ Stack trace: ' . $e->getTraceAsString());
                     // No fallar la orden si el email falla, pero mantener estado 'pendiente'
                 }
+                Log::info('📧 ========== FIN ENVÍO DE EMAIL ==========');
             } else {
                 Log::warning('⚠️ No se envió email: no hay email de proveedor disponible');
                 Log::info('⚠️ supplier_email en orden: ' . ($order->supplier_email ?? 'null'));

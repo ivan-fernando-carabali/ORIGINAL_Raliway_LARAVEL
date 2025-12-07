@@ -3,7 +3,7 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
+// use Illuminate\Contracts\Queue\ShouldQueue; // Removido para enviar correos inmediatamente
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
