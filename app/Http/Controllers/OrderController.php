@@ -9,6 +9,7 @@ use App\Mail\SupplierOrderMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class OrderController extends Controller
 {
@@ -98,32 +99,38 @@ class OrderController extends Controller
             Log::info('📅 Valor de date (string): ' . $dateValue . ' (tipo: ' . gettype($dateValue) . ')');
             Log::info('📅 Valor de date en orderData: ' . ($orderData['date'] ?? 'NO DEFINIDO'));
             
-            // Crear la orden usando create con los datos validados
+            // Crear la orden usando DB::table directamente para asegurar que date se guarde correctamente
             try {
-                // Asegurar que date esté en el formato correcto antes de crear
-                $order = new Order();
-                $order->product_id = $orderData['product_id'];
-                $order->inventory_id = $orderData['inventory_id'];
-                $order->supplier_id = $orderData['supplier_id'];
-                $order->quantity = $orderData['quantity'];
-                $order->alert_id = $orderData['alert_id'];
-                $order->user_id = $orderData['user_id'];
-                $order->supplier_email = $orderData['supplier_email'];
-                $order->dep_buy_id = $orderData['dep_buy_id'];
-                $order->date = $orderData['date']; // Asignar explícitamente
-                $order->status = $orderData['status'];
-                $order->save();
+                // Usar DB::table para insertar directamente y evitar problemas con el modelo
+                $orderId = DB::table('orders')->insertGetId([
+                    'product_id' => $orderData['product_id'],
+                    'inventory_id' => $orderData['inventory_id'],
+                    'supplier_id' => $orderData['supplier_id'],
+                    'quantity' => $orderData['quantity'],
+                    'alert_id' => $orderData['alert_id'],
+                    'user_id' => $orderData['user_id'],
+                    'supplier_email' => $orderData['supplier_email'],
+                    'dep_buy_id' => $orderData['dep_buy_id'],
+                    'date' => $orderData['date'], // Campo date explícitamente incluido
+                    'status' => $orderData['status'],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
                 
-                Log::info('✅ Orden creada exitosamente con ID: ' . $order->id);
+                Log::info('✅ Orden creada exitosamente con ID: ' . $orderId);
+                
+                // Cargar la orden usando el modelo para tener acceso a las relaciones
+                $order = Order::with(['product', 'supplier', 'alert', 'inventory', 'user'])->find($orderId);
+                
+                if (!$order) {
+                    throw new \Exception('No se pudo cargar la orden después de crearla');
+                }
             } catch (\Exception $e) {
                 Log::error('❌ Error al crear orden: ' . $e->getMessage());
                 Log::error('📋 Datos que se intentaron guardar: ' . json_encode($orderData));
                 Log::error('📋 Stack trace: ' . $e->getTraceAsString());
                 throw $e;
             }
-
-            // Cargar relaciones
-            $order->load(['product', 'supplier', 'alert', 'inventory', 'user']);
 
             // Intentar resolver proveedor si no vino
             if (!$order->supplier_id) {
