@@ -56,19 +56,26 @@ class OrderController extends Controller
             ]);
 
             // Preparar datos para crear la orden
-            // Asegurar que date siempre tenga un valor válido
-            $dateValue = null;
+            // Asegurar que date siempre tenga un valor válido en formato Y-m-d
+            $dateValue = now()->format('Y-m-d'); // Valor por defecto
             if (!empty($validated['date'])) {
-                $dateValue = $validated['date'];
-            } else {
-                $dateValue = now()->format('Y-m-d');
+                // Validar y normalizar el formato de fecha
+                $inputDate = $validated['date'];
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $inputDate)) {
+                    $dateValue = $inputDate;
+                } else {
+                    // Intentar convertir otros formatos
+                    try {
+                        $carbonDate = \Carbon\Carbon::parse($inputDate);
+                        $dateValue = $carbonDate->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // Si falla, usar fecha actual
+                        $dateValue = now()->format('Y-m-d');
+                    }
+                }
             }
             
-            // Validar formato de fecha
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
-                $dateValue = now()->format('Y-m-d');
-            }
-            
+            // Preparar array de datos asegurando que date esté presente
             $orderData = [
                 'product_id' => $validated['product_id'],
                 'inventory_id' => $validated['inventory_id'] ?? null,
@@ -78,16 +85,35 @@ class OrderController extends Controller
                 'user_id' => $validated['user_id'],
                 'supplier_email' => $validated['supplier_email'] ?? null,
                 'dep_buy_id' => null, // Campo nullable según migración
-                'date' => $dateValue, // Campo requerido - siempre debe tener valor
+                'date' => $dateValue, // SIEMPRE debe tener valor en formato Y-m-d
                 'status' => $validated['status'] ?? 'pendiente',
             ];
             
-            Log::info('📦 Creando orden con datos:', $orderData);
-            Log::info('📅 Valor de date: ' . $dateValue);
+            // Validar que date esté presente antes de crear
+            if (empty($orderData['date'])) {
+                $orderData['date'] = now()->format('Y-m-d');
+            }
             
-            // Crear la orden
+            Log::info('📦 Creando orden con datos:', $orderData);
+            Log::info('📅 Valor de date (string): ' . $dateValue . ' (tipo: ' . gettype($dateValue) . ')');
+            Log::info('📅 Valor de date en orderData: ' . ($orderData['date'] ?? 'NO DEFINIDO'));
+            
+            // Crear la orden usando create con los datos validados
             try {
-                $order = Order::create($orderData);
+                // Asegurar que date esté en el formato correcto antes de crear
+                $order = new Order();
+                $order->product_id = $orderData['product_id'];
+                $order->inventory_id = $orderData['inventory_id'];
+                $order->supplier_id = $orderData['supplier_id'];
+                $order->quantity = $orderData['quantity'];
+                $order->alert_id = $orderData['alert_id'];
+                $order->user_id = $orderData['user_id'];
+                $order->supplier_email = $orderData['supplier_email'];
+                $order->dep_buy_id = $orderData['dep_buy_id'];
+                $order->date = $orderData['date']; // Asignar explícitamente
+                $order->status = $orderData['status'];
+                $order->save();
+                
                 Log::info('✅ Orden creada exitosamente con ID: ' . $order->id);
             } catch (\Exception $e) {
                 Log::error('❌ Error al crear orden: ' . $e->getMessage());

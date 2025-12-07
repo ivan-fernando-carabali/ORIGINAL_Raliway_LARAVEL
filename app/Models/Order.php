@@ -24,7 +24,7 @@ class Order extends Model
     ];
 
     protected $casts = [
-        'date' => 'date',
+        // 'date' => 'date', // Removido para evitar problemas al guardar - se guarda como string Y-m-d
         'sent_at' => 'datetime',
         'received_at' => 'datetime',
     ];
