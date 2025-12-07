@@ -203,17 +203,51 @@ class OrderController extends Controller
 
             // Enviar email al proveedor si existe email
             if ($supplierEmail) {
-                try {
-                    Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
-                    Log::info('✅ Email enviado a: ' . $supplierEmail);
-                    
-                    // Actualizar estado a 'enviado' si se envió email correctamente
-                    $order->status = 'enviado';
-                    $order->sent_at = now();
-                    $order->save();
-                } catch (\Exception $e) {
-                    Log::error('❌ Error enviando email de orden: ' . $e->getMessage());
-                    // No fallar la orden si el email falla, pero mantener estado 'pendiente'
+                // Validar configuración de correo antes de intentar enviar
+                $mailConfig = [
+                    'mailer' => config('mail.default'),
+                    'host' => config('mail.mailers.smtp.host'),
+                    'port' => config('mail.mailers.smtp.port'),
+                    'username' => config('mail.mailers.smtp.username'),
+                    'from_address' => config('mail.from.address'),
+                    'from_name' => config('mail.from.name'),
+                ];
+                
+                Log::info('📧 Configuración de correo:', $mailConfig);
+                
+                // Verificar que la configuración de correo esté completa
+                if ($mailConfig['mailer'] === 'log') {
+                    Log::warning('⚠️ MAIL_MAILER está configurado como "log". Los correos se guardarán en storage/logs/laravel.log en lugar de enviarse.');
+                } elseif (empty($mailConfig['host']) || empty($mailConfig['username'])) {
+                    Log::error('❌ Configuración de correo incompleta. Verifica las variables de entorno MAIL_HOST y MAIL_USERNAME en Railway.');
+                } else {
+                    try {
+                        // Intentar enviar el correo
+                        Mail::to($supplierEmail)->send(new SupplierOrderMail($order));
+                        Log::info('✅ Email enviado exitosamente a: ' . $supplierEmail);
+                        
+                        // Actualizar estado a 'enviado' si se envió email correctamente
+                        $order->status = 'enviado';
+                        $order->sent_at = now();
+                        $order->save();
+                    } catch (\Symfony\Component\Mailer\Exception\TransportExceptionInterface $e) {
+                        // Error de conexión SMTP
+                        Log::error('❌ Error de conexión SMTP al enviar email:', [
+                            'email' => $supplierEmail,
+                            'error' => $e->getMessage(),
+                            'host' => $mailConfig['host'],
+                            'port' => $mailConfig['port'],
+                        ]);
+                        // No fallar la orden si el email falla, pero mantener estado 'pendiente'
+                    } catch (\Exception $e) {
+                        // Otros errores de correo
+                        Log::error('❌ Error enviando email de orden:', [
+                            'email' => $supplierEmail,
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                        ]);
+                        // No fallar la orden si el email falla, pero mantener estado 'pendiente'
+                    }
                 }
             } else {
                 Log::info('⚠️ No se envió email: no hay email de proveedor disponible');

@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $table) {
             $table->id();
 
-            // 🔗 Relación con categoría
+            // 🔗 Relación con categorías (permite NULL)
             $table->foreignId('category_id')
                 ->nullable()
                 ->constrained('categories')
@@ -22,16 +22,18 @@ return new class extends Migration
                 ->cascadeOnUpdate();
 
             // 🏷️ Información básica del producto
-            $table->string('name', 100);
-            $table->string('reference', 50)->nullable();
-            $table->string('unit_measurement', 20)->nullable();
-            $table->string('batch', 50)->nullable();
+            $table->string('name', 150); // más flexible
+            $table->string('reference', 100)->nullable();
+            $table->string('unit_measurement', 50)->nullable();
+            $table->string('batch', 100)->nullable();
+
+            // ❗ Corrección: permitir NULL evita errores en MySQL
             $table->date('expiration_date')->nullable();
 
-            // 🖼️ Imagen del producto
-            $table->string('image', 255)->nullable();
+            // 🖼️ Imagen principal
+            $table->string('image')->nullable();
 
-            // 🕒 Timestamps (created_at, updated_at)
+            // 🕒 created_at / updated_at
             $table->timestamps();
         });
     }

@@ -26,11 +26,33 @@ class Product extends Model
         'expiration_date' => 'date:Y-m-d',
     ];
 
-    /*obtener imagen en product-supplier con el dominio */
+    /**
+     * Atributos que se agregan automáticamente al serializar a JSON
+     */
+    protected $appends = ['image_url'];
 
+    /**
+     * Obtener la URL completa de la imagen
+     */
     public function getImageUrlAttribute()
     {
-        return $this->image ? url('storage/' . $this->image) : null;
+        if (!$this->image) {
+            return null;
+        }
+        
+        // Si la imagen ya es una URL completa, devolverla tal cual
+        if (filter_var($this->image, FILTER_VALIDATE_URL)) {
+            return $this->image;
+        }
+        
+        // Obtener la URL base de la aplicación
+        $baseUrl = rtrim(config('app.url'), '/');
+        
+        // Asegurar que la ruta de la imagen no tenga barras iniciales duplicadas
+        $imagePath = ltrim($this->image, '/');
+        
+        // Construir la URL completa
+        return $baseUrl . '/storage/' . $imagePath;
     }
 
 
